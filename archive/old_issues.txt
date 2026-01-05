@@ -1,0 +1,163 @@
+# Archived Issues from Original cc_forge Repository
+# These were personal self-improvement tasks, archived before repurposing the repo.
+# Archived: 2025-01-02
+
+================================================================================
+
+Issue #21 [OPEN]: Look into Sunrise Bank
+Created: 2024-04-12T17:34:55Z
+Labels: (none)
+Body:
+Sunrise is a very well-rated B corp bank based out of Minneapolis with a community support mission.
+I'd like to consider whether we can make this part of our banking portfolio.
+
+================================================================================
+
+Issue #20 [OPEN]: Fix my phone
+Created: 2024-04-12T17:32:43Z
+Labels: (none)
+Body:
+The screen and the camera of my phone are both broken right now.
+I need to get them fixed. I'm not sure if the phone is still under warranty; if so, I'd like to get a new/refurbished one.
+
+================================================================================
+
+Issue #19 [OPEN]: Get Windows 11 Pro software and license
+Created: 2024-03-27T18:46:51Z
+Labels: (none)
+Body:
+(No description)
+
+================================================================================
+
+Issue #17 [OPEN]: Move tasks to Google Note
+Created: 2024-03-20T22:06:22Z
+Labels: enhancement
+Body:
+I have captured most of my tasks/todo's/etc. in my Google Keep list: The List. I need to remove them all from the front README.md as that is too much effort to keep updating
+
+- [x] Move all notes to Google Keep
+- [x] Remove the list from the README.md
+- [ ] Create issue for each Google Keep list item
+
+================================================================================
+
+Issue #16 [OPEN]: Install mud room bench
+Created: 2024-03-20T22:05:21Z
+Labels: enhancement, home
+Body:
+I need to install the bench in the mud room to improve the useability of that space.
+Here are the current subtasks as I see them:
+
+- [ ] Come to agreement with Shawna and where and how
+- [ ] Make sure we have all of the materials and supplies available
+- [ ] Get any missing supplies/materials
+- [ ] Measure, cut, and attach support trim
+- [ ] Measure, cut, and attach supports
+- [ ] Measure cut, and place bench material
+
+================================================================================
+
+Issue #15 [OPEN]: Create recurring toothpaste order
+Created: 2024-03-20T22:04:30Z
+Labels: enhancement, life
+Body:
+I recently ordered my toothpaste from Amazon and I want to set this up as recurring so I'm less likely to have to go without. I want to set this up to be arriving with my chai order...
+
+================================================================================
+
+Issue #12 [OPEN]: Consider All-Birds Run-Walk shoe
+Created: 2024-03-15T21:40:38Z
+Labels: enhancement, life
+Body:
+I like the All-Birds philosophy and want to encourage them to continue to make athletic shoes. I also think these shoes might work for lighter run days:
+https://www.allbirds.com/products/mens-tree-flyers?price-tiers=msrp%2Ctier-1%2Ctier-2
+
+I think this may really be worth trying to run in and see if there is an eco-conscious option for running shoe.
+
+================================================================================
+
+Issue #10 [OPEN]: Consider improving my weekly review
+Created: 2024-03-15T19:39:49Z
+Labels: enhancement
+Body:
+I want to figure out a way to review my week in a positive way that encourages me to continue my effort. I need to consider what this process should be.
+
+================================================================================
+
+Issue #9 [OPEN]: LastPass families has expired
+Created: 2024-03-15T12:35:16Z
+Labels: computer, life
+Body:
+I should probably just go ahead and purchase another year of this... I had been using it and I don't think I'll get BitWarden set up quickly enough. There are also password improvement stuff I can do in LastPass while I make progress on BitWarden.
+
+This is related to #5
+
+================================================================================
+
+Issue #7 [OPEN]: Finish Setup on Shawna's laptop
+Created: 2024-03-14T14:43:11Z
+Labels: computer
+Body:
+We got the new laptop and had to get Shawna set up first... but then we lost steam. It is time to get Magden set up on the laptop and able to use that system. We should also have Minecraft setup for him on the laptop as well.
+Tasks to complete setup:
+
+- [x] Get Magden an account on the Laptop
+- [x] Install Minecraft for Magden
+- [ ] Get Corey an account on the Laptop
+- [ ] Ensure Corey has full administrator permissions
+- [ ] Install Minecraft for Corey?
+- [ ] Install Minecraft for Shawna?
+
+================================================================================
+
+Issue #6 [OPEN]: Finish setup on new computer
+Created: 2024-03-14T14:33:42Z
+Labels: computer
+Body:
+My newly purchased computer needs a few more things before it is ready for me to start to use. I need to finish the setup and there are a number of things that I want to do.
+
+- [ ] #19
+- [ ] Install Windows 11
+- [ ] Create Windows accounts for Corey, Magden, and Shawna
+- [ ] Install Ubuntu 24.04
+- [ ] Updated to my full development environment and productivity setup, update cc_env
+
+================================================================================
+
+Issue #5 [OPEN]: Improve password management
+Created: 2024-03-14T13:55:37Z
+Labels: enhancement, computer, life
+Body:
+Right now I'm using LastPass which is okay... I probably need to re-purchase the family plan but long term I would like to self-host a Bitwarden password management. I have some other projects I likely need to do here as well; especially a lot of password maintenance.
+
+- [ ] https://github.com/amc-corey-cox/cc_forge/issues/9
+- [ ] Migrate to Bitwarden
+- [ ] Self Host Bitwarden on GCP free node
+
+================================================================================
+
+Issue #4 [CLOSED]: Get new running shoes
+Created: 2024-03-14T13:54:08Z
+Labels: life
+Body:
+I need new running shoes because I think they may be why I keep injuring myself.
+I want an inexpensive shoe that is good for long-distance toe runners that is good for high-mileage.
+
+================================================================================
+
+Issue #2 [CLOSED]: Start lists
+Created: 2024-03-14T03:15:59Z
+Labels: (none)
+Body:
+I need to start organizing my lists of things I'd like to get accomplished and organizing them in meaningful ways.
+
+================================================================================
+
+Issue #1 [CLOSED]: Update Readme with thoughts on using this repository
+Created: 2024-03-14T03:15:22Z
+Labels: (none)
+Body:
+I need to describe my goals for this repository and how I'd like to improve.
+
+================================================================================

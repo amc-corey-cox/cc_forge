@@ -1,0 +1,205 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/amc-corey-cox/cc_forge/knowledge/schema/entry.schema.json",
+  "title": "Knowledge Base Entry",
+  "description": "Schema for CC Forge knowledge base entries with provenance tracking",
+  "type": "object",
+  "required": ["id", "title", "created", "author", "curation_type", "sources"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^kb-[0-9]{4}-[0-9]{3,}$",
+      "description": "Unique identifier (kb-YYYY-NNN format)"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable title"
+    },
+    "created": {
+      "type": "string",
+      "format": "date",
+      "description": "Creation date (YYYY-MM-DD)"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date",
+      "description": "Last update date (YYYY-MM-DD)"
+    },
+    "author": {
+      "type": "string",
+      "description": "Author identifier: 'human' or 'agent:<agent-id>'"
+    },
+    "curation_type": {
+      "type": "string",
+      "enum": ["human_curated", "ai_assisted", "ai_generated", "ai_unverified"],
+      "description": "How this content was created"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/source"
+      },
+      "description": "List of sources supporting this entry"
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Topic tags for classification"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low", "uncertain"],
+      "description": "Confidence level in the content accuracy"
+    },
+    "verified": {
+      "type": "boolean",
+      "description": "Whether sources have been verified"
+    },
+    "verified_by": {
+      "type": "string",
+      "enum": ["human", "automated", "unverified"],
+      "description": "Who/what verified the sources"
+    },
+    "verification_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When verification occurred"
+    },
+    "verification_notes": {
+      "type": "string",
+      "description": "Notes about the verification process"
+    },
+    "ai_metadata": {
+      "$ref": "#/definitions/ai_metadata",
+      "description": "Required when curation_type is ai_* "
+    },
+    "supersedes": {
+      "type": "string",
+      "description": "ID of entry this replaces (if any)"
+    },
+    "related": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of related entries"
+    }
+  },
+  "definitions": {
+    "source": {
+      "type": "object",
+      "required": ["id", "type", "title", "url", "accessed"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^src-[0-9]{3}$",
+          "description": "Source identifier for inline citations"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["primary", "secondary", "tertiary"],
+          "description": "Source trust tier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the source"
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Author(s) of the source"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the source"
+        },
+        "archive_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Archive.org or cached URL (backup)"
+        },
+        "accessed": {
+          "type": "string",
+          "format": "date",
+          "description": "Date the source was accessed"
+        },
+        "published": {
+          "type": "string",
+          "format": "date",
+          "description": "Publication date of the source"
+        },
+        "doi": {
+          "type": "string",
+          "description": "DOI if available"
+        },
+        "arxiv": {
+          "type": "string",
+          "description": "arXiv ID if available"
+        },
+        "quotes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "Exact quote from source"
+              },
+              "location": {
+                "type": "string",
+                "description": "Where in the source (section, page, etc.)"
+              }
+            }
+          },
+          "description": "Exact quotes from the source"
+        }
+      }
+    },
+    "ai_metadata": {
+      "type": "object",
+      "required": ["model", "generation_date"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model used for generation"
+        },
+        "model_version": {
+          "type": "string",
+          "description": "Specific model version"
+        },
+        "prompt_hash": {
+          "type": "string",
+          "description": "SHA256 hash of the prompt used"
+        },
+        "generation_date": {
+          "type": "string",
+          "format": "date",
+          "description": "When content was generated"
+        },
+        "confidence_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Model confidence if available"
+        },
+        "reviewed_by": {
+          "type": "string",
+          "description": "Human reviewer if ai_assisted"
+        },
+        "review_date": {
+          "type": "string",
+          "format": "date",
+          "description": "When human review occurred"
+        }
+      }
+    }
+  }
+}

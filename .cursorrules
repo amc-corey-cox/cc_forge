@@ -1,0 +1,45 @@
+# Cursor Rules for CC Forge
+
+**Important**: Read AGENTS.md for complete agent instructions. This file provides a summary.
+
+## Project Overview
+
+CC Forge is a local-first AI agents development system. You are helping build a self-improving autonomous software development pipeline.
+
+## Key Files
+
+- AGENTS.md - Complete agent instructions (READ THIS)
+- DESIGN.md - Architectural vision
+- ROADMAP.md - Implementation plan
+- README.md - Public project description
+
+## Critical Rules
+
+1. **No System Info**: Never embed hardware specs, IPs, usernames, or system paths in code
+2. **Local-First**: Prefer solutions that work offline without external APIs
+3. **Ask First**: For changes touching 3+ files, new dependencies, or architectural changes
+4. **Transparency**: All agent actions should be logged and traceable
+
+## Code Style
+
+- Python is the primary language
+- Use type hints for public interfaces
+- Follow existing patterns in the codebase
+- Docstrings for public functions only
+
+## Git Workflow
+
+- Branch from main
+- Descriptive branch names: feature/*, fix/*
+- PRs require clear descriptions
+- Never commit secrets
+
+## Teams
+
+This project has four agent teams:
+- Dev Team: Creates PRs from issues
+- Test Team: Writes and verifies tests
+- Red Team: Adversarial review
+- Blue Team: Test quality validation
+
+Understand which team's code you're working on and respect boundaries.
