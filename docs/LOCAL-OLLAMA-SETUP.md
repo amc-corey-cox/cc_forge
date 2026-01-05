@@ -16,6 +16,8 @@ Four systemd services available, only one active at a time (all bind to port 114
 
 OpenWebUI connects to `localhost:11434` and works with whichever service is active.
 
+**Note:** Services bind to `127.0.0.1` (localhost only) by default for security. See [Network Access](#network-access) if you need remote access.
+
 ## Quick Reference
 
 | Service | Best For | Use When |
@@ -67,81 +69,13 @@ systemctl is-active ollama ollama-cpu ollama-ipex ollama-vulkan
 
 ## Service Files
 
-### ollama-ipex.service (GPU via SYCL/Level Zero)
+Service files are in `docs/` directory:
 
-```ini
-[Unit]
-Description=Ollama Service (IPEX-LLM SYCL Backend)
-After=network-online.target
-
-[Service]
-ExecStart=/home/corey/ipex-ollama/ollama-ipex-llm-2.3.0b20250612-ubuntu/ollama serve
-User=corey
-Group=corey
-Restart=always
-RestartSec=3
-WorkingDirectory=/home/corey/ipex-ollama/ollama-ipex-llm-2.3.0b20250612-ubuntu
-
-# IPEX-LLM environment
-Environment="OLLAMA_NUM_GPU=999"
-Environment="OLLAMA_HOST=0.0.0.0:11434"
-Environment="no_proxy=localhost,127.0.0.1"
-Environment="ZES_ENABLE_SYSMAN=1"
-Environment="SYCL_CACHE_PERSISTENT=1"
-Environment="SYCL_PI_LEVEL_ZERO_USE_IMMEDIATE_COMMANDLISTS=1"
-
-# Use bundled SYCL libraries
-Environment="LD_LIBRARY_PATH=/home/corey/ipex-ollama/ollama-ipex-llm-2.3.0b20250612-ubuntu"
-
-[Install]
-WantedBy=default.target
-```
-
-### ollama-cpu.service (CPU only, for large models)
-
-Uses stock Ollama binary (IPEX binary doesn't have proper CPU-only mode).
-
-```ini
-[Unit]
-Description=Ollama Service (CPU Only)
-After=network-online.target
-
-[Service]
-# Use stock Ollama binary - IPEX binary doesn't have proper CPU fallback
-ExecStart=/usr/local/bin/ollama serve
-User=ollama
-Group=ollama
-Restart=always
-RestartSec=3
-
-# Force CPU only - disable all GPU backends
-Environment="OLLAMA_NUM_GPU=0"
-Environment="OLLAMA_HOST=0.0.0.0:11434"
-
-[Install]
-WantedBy=default.target
-```
-
-### ollama-vulkan.service (Vulkan GPU, fallback)
-
-```ini
-[Unit]
-Description=Ollama Service (Vulkan Backend)
-After=network-online.target
-
-[Service]
-ExecStart=/usr/local/bin/ollama serve
-User=ollama
-Group=ollama
-Restart=always
-RestartSec=3
-
-Environment="OLLAMA_HOST=0.0.0.0:11434"
-Environment="OLLAMA_VULKAN=1"
-
-[Install]
-WantedBy=default.target
-```
+| File | Description |
+|------|-------------|
+| [`ollama-cpu.service`](ollama-cpu.service) | CPU only (default) - uses stock Ollama binary |
+| [`ollama-ipex.service`](ollama-ipex.service) | IPEX-LLM GPU via SYCL/Level Zero |
+| [`ollama-vulkan.service`](ollama-vulkan.service) | Vulkan GPU backend |
 
 ## Model Compatibility
 
@@ -155,7 +89,32 @@ WantedBy=default.target
 
 ## Initial Setup
 
-Run these commands on the local server to set up the services:
+### Prerequisites
+
+1. **Stock Ollama installed** at `/usr/local/bin/ollama`
+2. **`ollama` system user** exists (created by Ollama installer)
+3. **Level Zero runtime** installed (for IPEX GPU support)
+
+### Install IPEX-LLM
+
+Download and install IPEX-LLM to the system location:
+
+```bash
+# Download IPEX-LLM portable (check for latest version)
+cd /tmp
+wget https://github.com/intel/ipex-llm/releases/download/v2.3.0/ollama-ipex-llm-2.3.0-ubuntu.tar.gz
+tar -xzf ollama-ipex-llm-*.tar.gz
+
+# Install to system location
+sudo mkdir -p /opt/ipex-llm
+sudo mv ollama-ipex-llm-*/* /opt/ipex-llm/
+sudo chown -R ollama:ollama /opt/ipex-llm
+
+# Verify
+ls -la /opt/ipex-llm/ollama
+```
+
+### Install Service Files
 
 ```bash
 # 1. Stop and disable the original service (but keep the file as backup)
@@ -179,6 +138,21 @@ ollama run llama3.1:latest "What is 2+2?"
 ```
 
 **Note:** The original `ollama.service` is preserved as a known-working baseline for troubleshooting.
+
+## Network Access
+
+By default, services bind to `127.0.0.1` (localhost only) for security. If you need remote access (e.g., from OpenWebUI on another machine):
+
+1. **Edit the service file** to use `0.0.0.0:11434`
+2. **Configure firewall** to restrict access to trusted IPs only:
+   ```bash
+   sudo ufw allow from 192.168.1.0/24 to any port 11434
+   ```
+3. **Reload the service:**
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl restart ollama-cpu  # or whichever is active
+   ```
 
 ## Troubleshooting
 
@@ -227,6 +201,15 @@ sudo apt update
 sudo apt install -y libze-intel-gpu1 libze1
 ```
 
+### Permission errors (IPEX)
+
+If IPEX service fails with permission errors:
+
+```bash
+# Ensure ollama user owns the installation
+sudo chown -R ollama:ollama /opt/ipex-llm
+```
+
 ## Known Limitations
 
 1. **No CPU+GPU split**: Neither IPEX nor Vulkan reliably supports partial offloading on Intel Arc
@@ -241,5 +224,5 @@ sudo apt install -y libze-intel-gpu1 libze1
 | `/etc/systemd/system/ollama-cpu.service` | CPU-only service (default) |
 | `/etc/systemd/system/ollama-ipex.service` | IPEX GPU service |
 | `/etc/systemd/system/ollama-vulkan.service` | Vulkan GPU service |
-| `~/ipex-ollama/` | IPEX-LLM portable installation |
-| `~/.ollama/models/` | Downloaded models |
+| `/opt/ipex-llm/` | IPEX-LLM installation |
+| `/usr/share/ollama/.ollama/models/` | Downloaded models (ollama user) |

@@ -12,7 +12,7 @@ RestartSec=3
 
 # Force CPU only - disable all GPU backends
 Environment="OLLAMA_NUM_GPU=0"
-Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="OLLAMA_HOST=127.0.0.1:11434"
 
 [Install]
 WantedBy=default.target
