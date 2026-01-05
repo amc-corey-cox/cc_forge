@@ -1,0 +1,25 @@
+[Unit]
+Description=Ollama Service (IPEX-LLM SYCL Backend)
+After=network-online.target
+
+[Service]
+ExecStart=/home/corey/ipex-ollama/ollama-ipex-llm-2.3.0b20250612-ubuntu/ollama serve
+User=corey
+Group=corey
+Restart=always
+RestartSec=3
+WorkingDirectory=/home/corey/ipex-ollama/ollama-ipex-llm-2.3.0b20250612-ubuntu
+
+# IPEX-LLM environment
+Environment="OLLAMA_NUM_GPU=999"
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="no_proxy=localhost,127.0.0.1"
+Environment="ZES_ENABLE_SYSMAN=1"
+Environment="SYCL_CACHE_PERSISTENT=1"
+Environment="SYCL_PI_LEVEL_ZERO_USE_IMMEDIATE_COMMANDLISTS=1"
+
+# Use bundled SYCL libraries
+Environment="LD_LIBRARY_PATH=/home/corey/ipex-ollama/ollama-ipex-llm-2.3.0b20250612-ubuntu"
+
+[Install]
+WantedBy=default.target

@@ -86,6 +86,7 @@ cc_forge/
 
 - Branch from `main` for all work
 - Use descriptive branch names: `feature/add-red-team`, `fix/ollama-connection`
+- **Commit messages**: One line only, concise and descriptive (no multi-line bodies)
 - PRs require description of changes and testing done
 - Squash commits when merging (keep history clean)
 

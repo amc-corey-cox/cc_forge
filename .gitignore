@@ -97,3 +97,4 @@ temp/
 
 # Archives (keep the old_issues.txt though)
 !archive/old_issues.txt
+docs/HOME-SERVER-STATUS.md

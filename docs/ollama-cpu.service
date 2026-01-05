@@ -1,0 +1,18 @@
+[Unit]
+Description=Ollama Service (CPU Only)
+After=network-online.target
+
+[Service]
+# Use stock Ollama binary - IPEX binary doesn't have proper CPU fallback
+ExecStart=/usr/local/bin/ollama serve
+User=ollama
+Group=ollama
+Restart=always
+RestartSec=3
+
+# Force CPU only - disable all GPU backends
+Environment="OLLAMA_NUM_GPU=0"
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+
+[Install]
+WantedBy=default.target
