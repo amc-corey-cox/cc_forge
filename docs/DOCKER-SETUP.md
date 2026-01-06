@@ -25,8 +25,8 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
   sudo gpg --dearmor -o /usr/share/keyrings/docker.gpg
 
 # Add Docker repository
-echo "deb [arch="$(dpkg --print-architecture)" signed-by=/usr/share/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Install Docker
@@ -75,17 +75,18 @@ docker system prune
 
 ## Architecture Notes
 
-Docker is used for the cc_forge agent system:
+Docker is used for the CC Forge agent system:
 
-- **Gitea**: Local git server for agent workspaces
 - **Agent containers**: Isolated environments for dev/test/review agents
-- **Network isolation**: Agents cannot access internet directly
+- **Full network access**: Agents can access Ollama, GitHub, and external resources
+- **Scoped GitHub tokens**: Agents have limited permissions (create PRs, no admin)
+- **Branch protection**: Agents cannot push directly to main
 
-See [AGENT-CONTAINERS.md](AGENT-CONTAINERS.md) for the agent architecture (when created).
+See [Issue #4](https://github.com/amc-corey-cox/cc_forge/issues/4) for the agent architecture design.
 
 ## Security Considerations
 
 - Users in the `docker` group effectively have root-equivalent access
 - Only add trusted users to the docker group
-- Agent containers run with restricted network access
-- Agents push to local Gitea, not directly to GitHub
+- Containers protect the host system from agent actions
+- GitHub branch protection prevents direct pushes to main
