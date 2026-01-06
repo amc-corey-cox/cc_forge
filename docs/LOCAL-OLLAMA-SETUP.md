@@ -59,8 +59,17 @@ systemctl is-active ollama ollama-cpu ollama-ipex ollama-vulkan
 | Model Size | Recommended Service | Why |
 |------------|---------------------|-----|
 | Any / Mixed | `ollama-cpu` | Safe default, works with everything |
-| ≤16GB only | `ollama-ipex` | GPU acceleration, much faster |
+| ≤16GB only | `ollama-ipex` | GPU acceleration, ~2x faster |
 | >16GB (70b) | `ollama-cpu` | Only option that works |
+
+### Performance (llama3.1:latest 4.7GB)
+
+| Backend | Prompt Eval | Generation |
+|---------|-------------|------------|
+| IPEX GPU | 147.6 tok/s | 39.0 tok/s |
+| CPU | 47.6 tok/s | 18.1 tok/s |
+
+IPEX provides ~2x faster generation and ~3x faster prompt processing.
 
 **Workflow:**
 1. Keep `ollama-cpu` as the default (works with everything)
