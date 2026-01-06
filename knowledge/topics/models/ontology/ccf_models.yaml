@@ -1,0 +1,362 @@
+# CC Forge Model Ontology - LinkML Schema
+# https://linkml.io/
+
+id: https://cc-forge.dev/ontology/models
+name: ccf_models
+title: CC Forge Model Ontology
+description: >-
+  Ontology for AI/ML models, their capabilities, and deployment constraints.
+  Designed for local-first AI development.
+
+license: Apache-2.0
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ccf: https://cc-forge.dev/ontology/models/
+  schema: http://schema.org/
+  dcterms: http://purl.org/dc/terms/
+  iao: http://purl.obolibrary.org/obo/IAO_
+  obo: http://purl.obolibrary.org/obo/
+
+default_prefix: ccf
+default_range: string
+
+imports:
+  - linkml:types
+
+# =============================================================================
+# TYPES
+# =============================================================================
+
+types:
+  ParameterCount:
+    typeof: string
+    description: Model parameter count (e.g., "7B", "70B", "671B")
+    pattern: "^[0-9.]+(B|M|K)$"
+
+  ContextLength:
+    typeof: integer
+    description: Maximum context length in tokens
+    minimum_value: 1
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enums:
+  LicenseType:
+    description: Model license categories
+    permissible_values:
+      apache-2.0:
+        description: Apache License 2.0
+      mit:
+        description: MIT License
+      llama:
+        description: Meta Llama Community License
+      cc-by-nc-4.0:
+        description: Creative Commons Non-Commercial
+      proprietary:
+        description: Proprietary license
+
+  QuantizationType:
+    description: GGUF quantization levels
+    permissible_values:
+      fp16:
+        description: 16-bit floating point (full precision)
+      q8_0:
+        description: 8-bit quantization
+      q6_k:
+        description: 6-bit K-quant
+      q5_k_m:
+        description: 5-bit K-quant medium
+      q4_k_m:
+        description: 4-bit K-quant medium (recommended)
+      q3_k_m:
+        description: 3-bit K-quant medium
+      q2_k:
+        description: 2-bit K-quant (not recommended)
+
+  TierType:
+    description: CC Forge hardware deployment tiers
+    permissible_values:
+      tier1_gpu:
+        description: Intel Arc GPU (~8GB VRAM)
+      tier2_cpu:
+        description: CPU with 64GB+ RAM
+      tier3_api:
+        description: External API
+
+  ModelStatus:
+    description: Model lifecycle status
+    permissible_values:
+      active:
+        description: Currently recommended
+      deprecated:
+        description: Superseded by newer model
+      experimental:
+        description: Not yet validated
+
+# =============================================================================
+# CLASSES
+# =============================================================================
+
+classes:
+
+  # ---------------------------------------------------------------------------
+  # Base Classes
+  # ---------------------------------------------------------------------------
+
+  NamedThing:
+    description: Base class for all named entities
+    abstract: true
+    slots:
+      - id
+      - label
+      - description
+    class_uri: schema:Thing
+
+  # ---------------------------------------------------------------------------
+  # Model Family
+  # ---------------------------------------------------------------------------
+
+  ModelFamily:
+    description: A lineage of related models from a single developer
+    is_a: NamedThing
+    class_uri: ccf:ModelFamily
+    slots:
+      - developed_by
+      - homepage
+      - xref_huggingface
+      - xref_github
+    slot_usage:
+      id:
+        pattern: "^ccf:family:[a-z0-9-]+$"
+
+  # ---------------------------------------------------------------------------
+  # Capability
+  # ---------------------------------------------------------------------------
+
+  Capability:
+    description: A capability that models can have
+    is_a: NamedThing
+    class_uri: ccf:Capability
+    slots:
+      - parent_capability
+    slot_usage:
+      id:
+        pattern: "^ccf:capability:[a-z0-9-]+$"
+
+  # ---------------------------------------------------------------------------
+  # Hardware Tier
+  # ---------------------------------------------------------------------------
+
+  HardwareTier:
+    description: A hardware deployment tier
+    is_a: NamedThing
+    class_uri: ccf:HardwareTier
+    slots:
+      - tier_type
+      - max_model_size
+      - speed_class
+      - cc_forge_service
+    slot_usage:
+      id:
+        pattern: "^ccf:tier:[a-z0-9-]+$"
+
+  # ---------------------------------------------------------------------------
+  # Model
+  # ---------------------------------------------------------------------------
+
+  Model:
+    description: A specific AI/ML model variant
+    is_a: NamedThing
+    class_uri: ccf:Model
+    slots:
+      - member_of_family
+      - derived_from
+      - has_capability
+      - parameter_count
+      - context_length
+      - fits_tier
+      - recommended_quantization
+      - license
+      - status
+      - xref_ollama
+      - xref_huggingface
+      - cc_forge_notes
+    slot_usage:
+      id:
+        pattern: "^ccf:model:[a-z0-9.-]+$"
+      member_of_family:
+        required: true
+
+  # ---------------------------------------------------------------------------
+  # Embedding Model (specialized)
+  # ---------------------------------------------------------------------------
+
+  EmbeddingModel:
+    description: A model that produces vector embeddings
+    is_a: Model
+    class_uri: ccf:EmbeddingModel
+    slots:
+      - embedding_dimensions
+
+# =============================================================================
+# SLOTS
+# =============================================================================
+
+slots:
+
+  # ---------------------------------------------------------------------------
+  # Identity Slots
+  # ---------------------------------------------------------------------------
+
+  id:
+    description: Unique identifier for this entity
+    identifier: true
+    range: uriorcurie
+    required: true
+    slot_uri: schema:identifier
+
+  label:
+    description: Human-readable name
+    range: string
+    required: true
+    slot_uri: rdfs:label
+
+  description:
+    description: Longer description of the entity
+    range: string
+    slot_uri: dcterms:description
+
+  # ---------------------------------------------------------------------------
+  # Organization Slots
+  # ---------------------------------------------------------------------------
+
+  developed_by:
+    description: Organization that developed this model/family
+    range: string
+    slot_uri: schema:creator
+
+  homepage:
+    description: Official homepage URL
+    range: uri
+    slot_uri: schema:url
+
+  # ---------------------------------------------------------------------------
+  # Relationship Slots
+  # ---------------------------------------------------------------------------
+
+  member_of_family:
+    description: The model family this model belongs to
+    range: ModelFamily
+    slot_uri: ccf:memberOfFamily
+
+  derived_from:
+    description: Parent model this was derived/distilled from
+    range: Model
+    slot_uri: ccf:derivedFrom
+
+  has_capability:
+    description: Capabilities this model has
+    range: Capability
+    multivalued: true
+    slot_uri: ccf:hasCapability
+
+  parent_capability:
+    description: Parent capability in hierarchy
+    range: Capability
+    slot_uri: ccf:parentCapability
+
+  fits_tier:
+    description: Hardware tiers this model can run on
+    range: HardwareTier
+    multivalued: true
+    slot_uri: ccf:fitsTier
+
+  # ---------------------------------------------------------------------------
+  # Model Property Slots
+  # ---------------------------------------------------------------------------
+
+  parameter_count:
+    description: Number of parameters (e.g., "7B", "70B")
+    range: ParameterCount
+    slot_uri: ccf:parameterCount
+
+  context_length:
+    description: Maximum context length in tokens
+    range: ContextLength
+    slot_uri: ccf:contextLength
+
+  embedding_dimensions:
+    description: Dimensionality of embedding vectors
+    range: integer
+    slot_uri: ccf:embeddingDimensions
+
+  recommended_quantization:
+    description: Recommended quantization for local use
+    range: QuantizationType
+    slot_uri: ccf:recommendedQuantization
+
+  license:
+    description: License type
+    range: LicenseType
+    slot_uri: dcterms:license
+
+  status:
+    description: Model lifecycle status
+    range: ModelStatus
+    slot_uri: ccf:status
+
+  # ---------------------------------------------------------------------------
+  # Tier Property Slots
+  # ---------------------------------------------------------------------------
+
+  tier_type:
+    description: Type of hardware tier
+    range: TierType
+    slot_uri: ccf:tierType
+
+  max_model_size:
+    description: Maximum model size that fits
+    range: string
+    slot_uri: ccf:maxModelSize
+
+  speed_class:
+    description: Relative speed (fast, slow, variable)
+    range: string
+    slot_uri: ccf:speedClass
+
+  cc_forge_service:
+    description: CC Forge systemd service name
+    range: string
+    slot_uri: ccf:ccForgeService
+
+  # ---------------------------------------------------------------------------
+  # Cross-Reference Slots
+  # ---------------------------------------------------------------------------
+
+  xref_ollama:
+    description: Ollama model tag
+    range: string
+    slot_uri: ccf:xrefOllama
+
+  xref_huggingface:
+    description: HuggingFace model/org ID
+    range: string
+    slot_uri: ccf:xrefHuggingface
+
+  xref_github:
+    description: GitHub repository
+    range: string
+    slot_uri: ccf:xrefGithub
+
+  # ---------------------------------------------------------------------------
+  # CC Forge Specific
+  # ---------------------------------------------------------------------------
+
+  cc_forge_notes:
+    description: CC Forge-specific usage notes
+    range: string
+    slot_uri: ccf:ccForgeNotes

@@ -1,16 +1,54 @@
-# CC Forge Model Ontology Schema
+# CC Forge Model Ontology - LinkML Schema
 
-This document defines the structure for our model ontology, following OBO Foundry principles adapted for practical use.
+This ontology uses [LinkML](https://linkml.io/) (Linked Data Modeling Language) for schema definition, following OBO Foundry principles.
 
-## Design Principles
+## Why LinkML?
 
-Based on [OBO Foundry Principles](http://obofoundry.org/principles/fp-000-summary.html):
+- **Used by OBO Foundry** - Same framework as MONDO, HPO, etc.
+- **YAML-based** - Human-readable schema definitions
+- **Multi-format** - Generates JSON Schema, OWL, Python dataclasses
+- **Validation** - Runtime data validation
+- **Tooling** - Mature ecosystem of generators and validators
 
-1. **Unique Identifiers** - Every term has a CCF ID
-2. **Hierarchical Structure** - Explicit is_a relationships
-3. **Formal Relations** - Defined predicates (has_capability, fits_tier, etc.)
-4. **Cross-References** - Links to external sources (Ollama, HuggingFace)
-5. **Versioning** - Ontology has explicit version
+## File Organization
+
+```
+knowledge/topics/models/ontology/
+├── ccf_models.yaml          # LinkML schema definition
+├── _schema.md                # This document
+└── data/
+    ├── families.yaml         # Model family instances
+    ├── capabilities.yaml     # Capability hierarchy
+    ├── tiers.yaml            # Hardware tier definitions
+    └── models.yaml           # Model instances
+```
+
+## Schema Overview
+
+**Schema file:** `ccf_models.yaml`
+
+### Classes
+
+| Class | Description |
+|-------|-------------|
+| `ModelFamily` | A lineage of models (Qwen, Llama, etc.) |
+| `Capability` | What models can do (code-generation, reasoning) |
+| `HardwareTier` | Deployment constraints (GPU, CPU, API) |
+| `Model` | Specific model variant |
+| `EmbeddingModel` | Specialized embedding model |
+
+### Key Relationships
+
+```
+Model
+  ├── member_of_family → ModelFamily
+  ├── derived_from → Model (optional)
+  ├── has_capability → Capability (multivalued)
+  └── fits_tier → HardwareTier (multivalued)
+
+Capability
+  └── parent_capability → Capability (hierarchy)
+```
 
 ## Identifier Format
 
@@ -29,132 +67,75 @@ Namespaces:
 - `family` - Model families/lineages
 - `capability` - What models can do
 - `tier` - Hardware deployment tiers
-- `quant` - Quantization levels
 
-## Term Schema
+## Using the Schema
 
-Each term is defined in YAML:
+### Validation
 
-```yaml
-# Term Definition
-id: ccf:model:qwen2.5-coder-7b
-label: "Qwen2.5-Coder-7B-Instruct"
-definition: "7 billion parameter code-specialized model from Qwen 2.5 series"
+```bash
+# Install LinkML
+pip install linkml
 
-# Hierarchy
-is_a: ccf:family:qwen           # Parent in hierarchy
-
-# Relations
-relations:
-  has_capability:
-    - ccf:capability:code-generation
-    - ccf:capability:code-completion
-    - ccf:capability:instruction-following
-  has_parameter_count: 7B
-  fits_tier:
-    - ccf:tier:gpu-8gb          # At Q4_K_M
-  developed_by: "Alibaba Cloud"
-  license: "Apache-2.0"
-
-# Cross-references
-xrefs:
-  ollama: "qwen2.5-coder:7b-instruct"
-  huggingface: "Qwen/Qwen2.5-Coder-7B-Instruct"
-
-# Metadata
-created: 2026-01-06
-updated: 2026-01-06
-status: active
+# Validate data against schema
+linkml-validate -s ccf_models.yaml data/models.yaml
 ```
 
-## Hierarchy Structure
+### Generate Artifacts
 
-```
-ccf:root
-├── ccf:family:*                    # Model families
-│   ├── ccf:family:qwen
-│   ├── ccf:family:llama
-│   ├── ccf:family:deepseek
-│   ├── ccf:family:mistral
-│   └── ccf:family:stable-diffusion
-│
-├── ccf:capability:*                # Capabilities
-│   ├── ccf:capability:text-generation
-│   │   ├── ccf:capability:code-generation
-│   │   ├── ccf:capability:reasoning
-│   │   └── ccf:capability:chat
-│   ├── ccf:capability:embedding
-│   └── ccf:capability:image-generation
-│
-├── ccf:tier:*                      # Hardware tiers
-│   ├── ccf:tier:gpu-8gb           # Intel Arc
-│   ├── ccf:tier:cpu-64gb          # CPU inference
-│   └── ccf:tier:api               # External API
-│
-└── ccf:quant:*                     # Quantization
-    ├── ccf:quant:q8_0
-    ├── ccf:quant:q4_k_m
-    └── ccf:quant:q3_k_m
+```bash
+# Generate JSON Schema
+gen-json-schema ccf_models.yaml > ccf_models.schema.json
+
+# Generate Python dataclasses
+gen-python ccf_models.yaml > ccf_models.py
+
+# Generate OWL ontology
+gen-owl ccf_models.yaml > ccf_models.owl
 ```
 
-## Relation Definitions
+### Load in Python
 
-| Relation | Domain | Range | Description |
-|----------|--------|-------|-------------|
-| `is_a` | any | any | Hierarchical parent |
-| `has_capability` | model | capability | What model can do |
-| `fits_tier` | model | tier | Where model runs |
-| `has_parameter_count` | model | string | Size (e.g., "7B") |
-| `developed_by` | model/family | string | Creator organization |
-| `derived_from` | model | model | Base model (for finetunes) |
-| `supersedes` | model | model | Replaces older model |
+```python
+from linkml_runtime.loaders import yaml_loader
+from ccf_models import Model
 
-## File Organization
-
-```
-knowledge/topics/models/
-├── ontology/
-│   ├── _schema.md              # This document
-│   ├── _terms.yaml             # All term definitions
-│   ├── families.yaml           # Family hierarchy
-│   ├── capabilities.yaml       # Capability hierarchy
-│   └── tiers.yaml              # Hardware tier definitions
-├── families/                   # Human-readable docs (reference _terms.yaml)
-├── capabilities/
-└── ...
+# Load a model
+model = yaml_loader.load("data/models.yaml", target_class=Model)
 ```
 
-## Validation
+## Enums
 
-Terms should be validated for:
-1. Unique IDs (no duplicates)
-2. Valid is_a references (parent exists)
-3. Valid relation targets (referenced terms exist)
-4. Required fields present (id, label, definition)
+The schema defines controlled vocabularies:
+
+| Enum | Values |
+|------|--------|
+| `LicenseType` | apache-2.0, mit, llama, cc-by-nc-4.0, proprietary |
+| `QuantizationType` | fp16, q8_0, q6_k, q5_k_m, q4_k_m, q3_k_m, q2_k |
+| `TierType` | tier1_gpu, tier2_cpu, tier3_api |
+| `ModelStatus` | active, deprecated, experimental |
+
+## Cross-References
+
+Models include xrefs to external systems:
+
+| Slot | Description | Example |
+|------|-------------|---------|
+| `xref_ollama` | Ollama model tag | `qwen2.5-coder:7b-instruct` |
+| `xref_huggingface` | HuggingFace ID | `Qwen/Qwen2.5-Coder-7B-Instruct` |
+| `xref_github` | GitHub repository | `QwenLM` |
 
 ## Versioning
 
-Ontology version follows semantic versioning:
-- **Major**: Breaking changes to structure
-- **Minor**: New terms or relations
-- **Patch**: Definition/metadata updates
+Schema version: `0.1.0`
 
-Current version: `0.1.0` (initial structure)
-
-## Migration from Current State
-
-The existing markdown documents remain as human documentation. The YAML ontology adds:
-1. Machine-parseable term definitions
-2. Explicit relationships
-3. Validation capability
-4. Future RAG integration
-
-Markdown docs reference ontology terms by ID for consistency.
-
----
+Follows semantic versioning:
+- **Major**: Breaking schema changes
+- **Minor**: New classes, slots, or enums
+- **Patch**: Description/metadata updates
 
 ## References
 
+- [LinkML Documentation](https://linkml.io/linkml/)
+- [LinkML Tutorial](https://linkml.io/linkml/intro/tutorial01.html)
 - [OBO Foundry Principles](http://obofoundry.org/principles/fp-000-summary.html)
 - [MONDO Disease Ontology](https://mondo.monarchinitiative.org/)
-- [OBO Academy](https://oboacademy.github.io/obook/)

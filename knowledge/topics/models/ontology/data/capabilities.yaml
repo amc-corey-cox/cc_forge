@@ -1,0 +1,57 @@
+# Capabilities - LinkML Data
+# Conforms to: ccf_models.yaml
+
+capabilities:
+  # Top-level capabilities
+  - id: ccf:capability:text-generation
+    label: Text Generation
+    description: Generating text output from text input
+
+  - id: ccf:capability:embedding
+    label: Embedding
+    description: Converting text to vector representations
+
+  - id: ccf:capability:image-generation
+    label: Image Generation
+    description: Generating images from text or image input
+
+  # Text generation subtypes
+  - id: ccf:capability:code-generation
+    label: Code Generation
+    description: Generating source code from natural language descriptions
+    parent_capability: ccf:capability:text-generation
+
+  - id: ccf:capability:code-completion
+    label: Code Completion
+    description: Fill-in-middle (FIM) code completion for IDE integration
+    parent_capability: ccf:capability:code-generation
+
+  - id: ccf:capability:reasoning
+    label: Reasoning
+    description: Step-by-step logical reasoning and problem solving
+    parent_capability: ccf:capability:text-generation
+
+  - id: ccf:capability:reasoning-cot
+    label: Chain-of-Thought Reasoning
+    description: Extended reasoning with visible thinking process
+    parent_capability: ccf:capability:reasoning
+
+  - id: ccf:capability:reasoning-math
+    label: Mathematical Reasoning
+    description: Solving mathematical problems with formal reasoning
+    parent_capability: ccf:capability:reasoning
+
+  - id: ccf:capability:chat
+    label: Chat/Conversation
+    description: Multi-turn conversational interaction
+    parent_capability: ccf:capability:text-generation
+
+  - id: ccf:capability:instruction-following
+    label: Instruction Following
+    description: Following complex multi-step instructions
+    parent_capability: ccf:capability:text-generation
+
+  - id: ccf:capability:long-context
+    label: Long Context Processing
+    description: Processing documents with 32K+ token contexts
+    parent_capability: ccf:capability:text-generation

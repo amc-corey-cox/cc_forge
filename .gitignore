@@ -74,7 +74,9 @@ docker-compose.local.yml
 *.safetensors
 
 # Knowledge base data (generated locally)
-data/
+# Note: /data/ (top-level) for generated data, not knowledge/.../data/
+/data/
+!knowledge/**/data/
 *.db
 *.sqlite
 *.sqlite3
