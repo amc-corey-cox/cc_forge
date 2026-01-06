@@ -100,9 +100,12 @@ Service files are in `docs/` directory:
 Download and install IPEX-LLM to the system location:
 
 ```bash
-# Download IPEX-LLM portable (check for latest version)
+# Check latest version at: https://github.com/intel/ipex-llm/releases
+IPEX_VERSION="2.3.0"
+
+# Download IPEX-LLM portable
 cd /tmp
-wget https://github.com/intel/ipex-llm/releases/download/v2.3.0/ollama-ipex-llm-2.3.0-ubuntu.tar.gz
+wget "https://github.com/intel/ipex-llm/releases/download/v${IPEX_VERSION}/ollama-ipex-llm-${IPEX_VERSION}-ubuntu.tar.gz"
 tar -xzf ollama-ipex-llm-*.tar.gz
 
 # Install to system location
@@ -113,6 +116,8 @@ sudo chown -R ollama:ollama /opt/ipex-llm
 # Verify
 ls -la /opt/ipex-llm/ollama
 ```
+
+**Trust note:** IPEX-LLM releases do not currently provide checksums or signatures. This installation trusts the GitHub release artifacts. Review the [IPEX-LLM repository](https://github.com/intel/ipex-llm) if you have concerns about supply chain security.
 
 ### Install Service Files
 
@@ -143,10 +148,11 @@ ollama run llama3.1:latest "What is 2+2?"
 
 By default, services bind to `127.0.0.1` (localhost only) for security. If you need remote access (e.g., from OpenWebUI on another machine):
 
-1. **Edit the service file** to use `0.0.0.0:11434`
+1. **Edit the service file** - change `OLLAMA_HOST=127.0.0.1:11434` to `OLLAMA_HOST=0.0.0.0:11434`
 2. **Configure firewall** to restrict access to trusted IPs only:
    ```bash
-   sudo ufw allow from 192.168.1.0/24 to any port 11434
+   # Replace <YOUR_SUBNET> with your network (e.g., 192.168.1.0/24)
+   sudo ufw allow from <YOUR_SUBNET> to any port 11434
    ```
 3. **Reload the service:**
    ```bash
@@ -192,14 +198,19 @@ If you see `libze_loader.so` or similar errors:
 dpkg -l | grep -i level-zero
 
 # If missing, add Intel repo and install
+# Detect Ubuntu codename (e.g., noble, jammy)
+UBUNTU_CODENAME="$(. /etc/os-release && echo "${UBUNTU_CODENAME}")"
+
 wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | \
   sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] \
-  https://repositories.intel.com/gpu/ubuntu noble client" | \
-  sudo tee /etc/apt/sources.list.d/intel-gpu-noble.list
+  https://repositories.intel.com/gpu/ubuntu ${UBUNTU_CODENAME} client" | \
+  sudo tee /etc/apt/sources.list.d/intel-gpu-${UBUNTU_CODENAME}.list
 sudo apt update
 sudo apt install -y libze-intel-gpu1 libze1
 ```
+
+**Trust note:** This adds Intel's official GPU repository. The GPG key is fetched over HTTPS from Intel's servers. See [Intel's GPU software documentation](https://dgpu-docs.intel.com/) for official installation instructions and key fingerprints.
 
 ### Permission errors (IPEX)
 
