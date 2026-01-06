@@ -280,6 +280,6 @@ Quantization impact varies by model and task. Test on your actual use cases.
 
 ## Related Documents
 
-- Intel Arc guide: `intel-arc.md`
-- CPU tier guide: `cpu-tier.md`
-- Model selection: `../_selection-guide.md`
+- Intel Arc guide: `models-intel-arc.md`
+- CPU tier guide: `models-cpu-tier.md`
+- Model selection: `/knowledge/topics/models/_selection-guide.md`

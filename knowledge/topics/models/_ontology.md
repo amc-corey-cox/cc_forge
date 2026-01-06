@@ -310,7 +310,7 @@ Image Generation
 
 - **Detailed family docs:** `families/*.md`
 - **Capability deep-dives:** `capabilities/*.md`
-- **Local deployment:** `local/*.md`
+- **Local deployment:** `/docs/models-*.md` (Intel Arc, CPU tier, quantization)
 - **Selection guide:** `_selection-guide.md`
 - **Controlled vocabularies:** `/knowledge/schema/model-vocabularies.md`
 

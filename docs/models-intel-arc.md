@@ -249,7 +249,7 @@ Common issues:
 
 ## Related Documents
 
-- Full setup guide: `/docs/LOCAL-OLLAMA-SETUP.md`
-- CPU tier guide: `cpu-tier.md`
-- Quantization guide: `quantization.md`
-- Model selection: `../_selection-guide.md`
+- Full setup guide: `LOCAL-OLLAMA-SETUP.md`
+- CPU tier guide: `models-cpu-tier.md`
+- Quantization guide: `models-quantization.md`
+- Model selection: `/knowledge/topics/models/_selection-guide.md`

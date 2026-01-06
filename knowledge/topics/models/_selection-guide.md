@@ -261,4 +261,4 @@ ollama show qwen2.5-coder:7b-instruct
 - **Ontology overview:** `_ontology.md`
 - **Family details:** `families/*.md`
 - **Capability deep-dives:** `capabilities/*.md`
-- **Local deployment:** `local/*.md`
+- **Local deployment:** `/docs/models-*.md`

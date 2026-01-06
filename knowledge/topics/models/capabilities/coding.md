@@ -252,5 +252,5 @@ Benchmark winners don't always win at real tasks. **Local testing matters.**
 ## Related Documents
 
 - Family details: `../families/qwen.md`, `../families/deepseek.md`, `../families/mistral.md`
-- Local deployment: `../local/intel-arc.md`
+- Local deployment: `/docs/models-intel-arc.md`
 - Selection guide: `../_selection-guide.md`

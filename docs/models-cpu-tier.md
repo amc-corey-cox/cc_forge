@@ -233,7 +233,7 @@ For a typical response (500 tokens) on 70B Q4_K_M:
 
 ## Related Documents
 
-- GPU tier: `intel-arc.md`
-- Quantization guide: `quantization.md`
-- Model selection: `../_selection-guide.md`
-- Family docs: `../families/`
+- GPU tier: `models-intel-arc.md`
+- Quantization guide: `models-quantization.md`
+- Model selection: `/knowledge/topics/models/_selection-guide.md`
+- Model families: `/knowledge/topics/models/families/`
