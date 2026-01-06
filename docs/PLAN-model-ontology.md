@@ -264,14 +264,14 @@ The work is complete when:
 
 ---
 
-## Open Questions for User
+## Decisions (Resolved)
 
-1. **Scope of families:** Focus on the 4-5 most relevant, or comprehensive coverage?
-2. **Depth vs breadth:** Deep dives on few models, or lighter coverage of many?
-3. **Testing priority:** Should we include actual benchmark runs in this phase, or defer?
-4. **Multimodal:** Include vision models now, or defer to later?
+1. **Scope of families:** Focus on relevant families (4-5 most applicable to CC Forge)
+2. **Depth vs breadth:** Deeper coverage - include real-world performance reports, especially local deployment experiences
+3. **Testing priority:** Defer benchmark runs to local session (user will run these)
+4. **Multimodal:** Include image generation (Stable Diffusion ecosystem) as placeholder - user has Automatic1111 installed
 
 ---
 
 *Plan created: 2026-01-06*
-*Status: Awaiting approval*
+*Status: APPROVED - Executing*
