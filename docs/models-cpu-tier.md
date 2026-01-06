@@ -1,42 +1,3 @@
----
-id: kb-2026-011
-title: "CPU Tier Model Deployment"
-created: 2026-01-06
-updated: 2026-01-06
-
-author: human
-curation_type: ai_assisted
-
-sources:
-  - id: src-001
-    type: secondary
-    title: "Llama 3.3 70B Local Performance"
-    url: "https://simonwillison.net/2024/Dec/9/llama-33-70b/"
-    accessed: 2026-01-06
-  - id: src-002
-    type: secondary
-    title: "Local LLM Benchmarks 2025"
-    url: "https://www.practicalwebtools.com/blog/local-llm-benchmarks-consumer-hardware-guide-2025"
-    accessed: 2026-01-06
-
-topics:
-  - models
-  - models/local
-  - cpu-inference
-
-confidence: medium
-verified: true
-verified_by: human
-verification_date: 2026-01-06
-verification_notes: "Based on community benchmarks and reports"
-
-ai_metadata:
-  model: claude-opus-4-5-20251101
-  generation_date: 2026-01-06
-  reviewed_by: human
-  review_date: 2026-01-06
----
-
 # CPU Tier Model Deployment
 
 ## Overview
@@ -70,7 +31,7 @@ For running 70B models comfortably:
 
 ### Token Generation Speed
 
-Based on community benchmarks [src-002]:
+Based on community benchmarks:
 
 | Model | Quantization | ~Speed | Notes |
 |-------|--------------|--------|-------|
@@ -81,12 +42,12 @@ Based on community benchmarks [src-002]:
 ### Real-World Reports
 
 **Llama 3.3 70B on M2 Pro 32GB (Q4):**
-- "8.4 tokens/second - the model works" [src-002]
+- "8.4 tokens/second - the model works"
 - Prompt processing is faster; generation is the bottleneck
 
 **70B on 64GB RAM:**
-- "Requires approximately 64GB of RAM to work well" [src-001]
-- First attempt may crash system if other apps open [src-001]
+- "Requires approximately 64GB of RAM to work well"
+- First attempt may crash system if other apps open
 - Close browsers, IDEs before running
 
 ## What Runs on CPU Tier

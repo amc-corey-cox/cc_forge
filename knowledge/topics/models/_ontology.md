@@ -46,6 +46,22 @@ This ontology provides a structured way to understand, categorize, and select AI
 1. **Human reference:** Navigate the model landscape, understand relationships
 2. **Agent guidance:** Structured data for model selection decisions
 
+## Formal Structure
+
+Following [OBO Foundry principles](http://obofoundry.org/principles/fp-000-summary.html), this ontology uses:
+
+- **Unique identifiers:** `ccf:<namespace>:<id>` (e.g., `ccf:model:qwen2.5-coder-7b`)
+- **Hierarchical relationships:** Explicit `is_a` and `has_capability` relations
+- **Cross-references:** Links to Ollama, HuggingFace, official sources
+- **Machine-parseable format:** YAML term definitions
+
+**Formal definitions:** `ontology/_terms.yaml`
+**Schema documentation:** `ontology/_schema.md`
+
+The sections below provide human-readable navigation; the YAML files enable machine processing.
+
+---
+
 ## Ontology Structure
 
 The ontology has three primary axes:
