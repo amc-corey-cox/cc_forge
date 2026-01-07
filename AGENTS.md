@@ -68,17 +68,18 @@ When working on any team's functionality, remember this adversarial structure ex
 
 ```
 cc_forge/
+├── CLAUDE.md           # This file (agent instructions)
 ├── DESIGN.md           # Architectural vision
-├── AGENTS.md           # This file (agent instructions)
 ├── ROADMAP.md          # Implementation phases
 ├── README.md           # Public-facing description
 ├── src/                # Source code
 │   ├── agents/         # Agent implementations
-│   ├── teams/          # Team-specific logic
-│   └── knowledge/      # Knowledge base system
+│   └── teams/          # Team-specific logic
 ├── tests/              # Test suites
 ├── docker/             # Container definitions
-├── docs/               # Additional documentation
+├── docs/               # Operational documentation (setup guides, etc.)
+├── knowledge/          # Educational content for human learning
+│   └── topics/models/ontology/  # LinkML model catalog
 └── scripts/            # Utility scripts
 ```
 
@@ -154,13 +155,30 @@ When implementing team functionality, understand the boundaries:
 
 ## Knowledge Base Guidelines
 
-When working on the knowledge base:
+The knowledge base (`knowledge/`) is an **educational resource for the human maintainer** to understand the AI landscape. It is NOT operational documentation, NOT a database for agents to query, and NOT a place for system-specific configuration.
 
-- **Curation over Collection**: Quality beats quantity
-- **Attribution Required**: Always cite sources
-- **Timeliness Matters**: Mark when information was captured
-- **Human-Readable**: Summaries should be understandable by a busy human
-- **No Paywalled Content**: Only reference publicly accessible sources
+### Purpose
+
+The maintainer is an expert programmer learning about AI. The knowledge base distills the firehose of AI information into curated, understandable content that builds mental models.
+
+### What Belongs in `knowledge/`
+
+- **Conceptual explanations**: What is quantization? How do transformers work?
+- **Landscape orientation**: How do different approaches compare? What are the tradeoffs?
+- **Curated insights**: Distilled understanding from papers, blogs, community experience
+- **The model ontology**: Structured catalog of models, families, and capabilities (LinkML schema in `knowledge/topics/models/ontology/`)
+
+### What Does NOT Belong in `knowledge/`
+
+- **Operational docs**: Setup guides, deployment commands → use `docs/`
+- **System-specific info**: Hardware specs, local paths → use `docs/` or `.env`
+- **Duplicated data**: Don't create markdown files that duplicate the ontology
+- **Tables of specs**: Model parameters, context lengths → already in ontology YAML
+- **Elaborate templates**: Keep it simple, don't over-engineer structure
+
+### Key Principle
+
+When adding to the knowledge base, ask: "Does this help the human understand something, or is it just data/reference material?" If it's just data, it probably belongs in the ontology or docs instead.
 
 ---
 
