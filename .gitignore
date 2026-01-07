@@ -67,13 +67,16 @@ docker-compose.override.yml
 docker-compose.local.yml
 
 # Models and large files (download locally, don't commit)
-models/
+# Note: /models/ (top-level) for downloaded weights, not knowledge/topics/models/
+/models/
 *.gguf
 *.bin
 *.safetensors
 
 # Knowledge base data (generated locally)
-data/
+# Note: /data/ (top-level) for generated data, not knowledge/.../data/
+/data/
+!knowledge/**/data/
 *.db
 *.sqlite
 *.sqlite3

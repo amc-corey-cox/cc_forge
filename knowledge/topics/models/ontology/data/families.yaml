@@ -1,0 +1,47 @@
+# Model Families - LinkML Data
+# Conforms to: ccf_models.yaml
+
+families:
+  - id: ccf:family:qwen
+    label: Qwen
+    description: Family of large language models developed by Alibaba Cloud's Qwen Team
+    developed_by: Alibaba Cloud
+    homepage: https://qwenlm.github.io/
+    xref_huggingface: Qwen
+    xref_github: QwenLM
+
+  - id: ccf:family:deepseek
+    label: DeepSeek
+    description: Family of models from DeepSeek AI, known for MoE architectures and reasoning
+    developed_by: DeepSeek AI
+    homepage: https://www.deepseek.com/
+    xref_huggingface: deepseek-ai
+    xref_github: deepseek-ai
+
+  - id: ccf:family:llama
+    label: Llama
+    description: Meta's open-weights large language model family
+    developed_by: Meta AI
+    homepage: https://ai.meta.com/
+    xref_huggingface: meta-llama
+
+  - id: ccf:family:mistral
+    label: Mistral
+    description: Efficient models from Mistral AI, known for sliding window attention
+    developed_by: Mistral AI
+    homepage: https://mistral.ai/
+    xref_huggingface: mistralai
+
+  - id: ccf:family:stable-diffusion
+    label: Stable Diffusion
+    description: Open-source text-to-image diffusion models from Stability AI
+    developed_by: Stability AI
+    homepage: https://stability.ai/
+    xref_huggingface: stabilityai
+
+  - id: ccf:family:nomic
+    label: Nomic
+    description: Open-source embedding models from Nomic AI
+    developed_by: Nomic AI
+    homepage: https://www.nomic.ai/
+    xref_huggingface: nomic-ai
