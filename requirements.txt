@@ -1,0 +1,9 @@
+# CC Forge dependencies
+# Core dependencies are minimal - we use standard library where possible
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Optional: for async support (future use)
+# aiohttp>=3.9.0
