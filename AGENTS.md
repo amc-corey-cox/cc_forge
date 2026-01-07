@@ -68,7 +68,7 @@ When working on any team's functionality, remember this adversarial structure ex
 
 ```
 cc_forge/
-├── CLAUDE.md           # This file (agent instructions)
+├── AGENTS.md           # This file (agent instructions)
 ├── DESIGN.md           # Architectural vision
 ├── ROADMAP.md          # Implementation phases
 ├── README.md           # Public-facing description

@@ -219,14 +219,14 @@ models:
     xref_ollama: "codestral:22b"
     cc_forge_notes: Check licensing before deployment
 
-# ==========================================================================
-# Embedding Models
-# ==========================================================================
+  # ==========================================================================
+  # Embedding Models
+  # ==========================================================================
 
-embedding_models:
   - id: ccf:model:nomic-embed-text
     label: nomic-embed-text
     description: Text embedding model for RAG applications
+    member_of_family: ccf:family:nomic
     has_capability:
       - ccf:capability:embedding
     parameter_count: "137M"

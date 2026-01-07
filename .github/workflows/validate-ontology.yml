@@ -26,7 +26,7 @@ jobs:
 
       - name: Validate schema syntax
         run: |
-          gen-yaml-schema knowledge/topics/models/ontology/ccf_models.yaml > /dev/null
+          linkml-lint knowledge/topics/models/ontology/ccf_models.yaml
           echo "Schema syntax is valid"
 
       - name: Validate data files

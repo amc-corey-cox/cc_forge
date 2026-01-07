@@ -38,3 +38,10 @@ families:
     developed_by: Stability AI
     homepage: https://stability.ai/
     xref_huggingface: stabilityai
+
+  - id: ccf:family:nomic
+    label: Nomic
+    description: Open-source embedding models from Nomic AI
+    developed_by: Nomic AI
+    homepage: https://www.nomic.ai/
+    xref_huggingface: nomic-ai
