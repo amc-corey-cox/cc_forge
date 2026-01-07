@@ -1,0 +1,71 @@
+# CC Forge Configuration
+# Copy to cc_forge.toml and customize for your environment
+
+# =============================================================================
+# Orchestration Settings
+# =============================================================================
+[orchestration]
+# Framework selection - currently supported: goose
+# Future options: crewai, langgraph, autogen
+framework = "goose"
+
+# Execution limits
+max_iterations = 10      # Max agent reasoning steps per task
+timeout_seconds = 300    # Max time per agent execution
+retry_attempts = 3       # Retries on transient failures
+
+# Logging
+log_level = "INFO"       # DEBUG, INFO, WARNING, ERROR
+log_agent_outputs = true # Log full agent outputs (can be verbose)
+
+# =============================================================================
+# LLM Provider Settings
+# =============================================================================
+[llm]
+# Provider: ollama (local), openai, anthropic, azure
+provider = "ollama"
+
+# Model selection
+# For Ollama: model name as shown in `ollama list`
+# For cloud: full model identifier (e.g., "gpt-4", "claude-3-opus")
+model = "qwen2.5:14b"
+
+# API configuration (for cloud providers)
+# api_base = "https://api.openai.com/v1"
+# api_key = ""  # Set via CC_LLM_API_KEY env var instead
+
+# =============================================================================
+# Framework-Specific Configuration
+# =============================================================================
+[orchestration.framework_config]
+# Goose-specific settings
+# goose_config_path = "~/.config/goose"
+
+# CrewAI-specific settings (when implemented)
+# crew_verbose = true
+# crew_memory = true
+
+# LangGraph-specific settings (when implemented)
+# langgraph_checkpoint = true
+
+# =============================================================================
+# Team Configuration
+# =============================================================================
+[teams]
+# Default models for each team (override the global default)
+# Leave empty to use the global llm.model setting
+
+[teams.dev]
+# model = "deepseek-coder:6.7b"  # Smaller, faster model for routine coding
+
+[teams.test]
+# model = "qwen2.5:14b"  # Balanced model for test generation
+
+[teams.red]
+# model = "qwen2.5:32b"  # Larger model for adversarial analysis
+
+[teams.blue]
+# model = "qwen2.5:14b"  # Balanced model for mutation testing
+
+[teams.triage]
+# model = "qwen2.5:7b"  # Smaller model sufficient for issue triage

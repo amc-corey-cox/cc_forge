@@ -317,12 +317,37 @@ Local-first doesn't mean local-only. We use the right tool for the job:
 
 ---
 
+## Architectural Decisions
+
+Decisions made during development, recorded for context.
+
+### ADR-001: Pluggable Orchestration Layer
+
+**Date**: 2026-01-07
+**Status**: Accepted
+**Context**: The AI agent framework ecosystem is evolving rapidly. Goose, CrewAI, LangGraph, and AutoGen each have tradeoffs. Committing to one framework risks lock-in.
+
+**Decision**: Implement a framework-agnostic orchestration abstraction layer (`src/orchestration/`) that allows swapping between frameworks without rewriting agent logic.
+
+**Implementation**:
+- `Orchestrator` protocol defines what any framework must implement
+- `GooseOrchestrator` is the initial adapter (Goose selected for MCP support, local-first design)
+- `create_orchestrator()` factory selects framework based on config
+- Configuration via `cc_forge.toml` or environment variables
+
+**Consequences**:
+- Can evaluate frameworks without major rewrites
+- Slight overhead from abstraction layer
+- New frameworks require writing an adapter (~100-200 lines)
+
+---
+
 ## Open Questions
 
 These are decisions to be made as the system evolves:
 
 1. **Model Selection**: Which local models work best for each team's tasks?
-2. **Agent Framework**: Build custom, or use existing (LangGraph, CrewAI, etc.)?
+2. ~~**Agent Framework**: Build custom, or use existing?~~ → Resolved: ADR-001
 3. **Knowledge Base Storage**: Vector DB, graph DB, or simpler approach?
 4. **Inter-Agent Communication**: Direct calls, message queue, or shared state?
 5. **Human Interface**: CLI, web dashboard, or IDE integration?
