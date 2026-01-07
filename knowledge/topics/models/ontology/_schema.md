@@ -37,6 +37,15 @@ knowledge/topics/models/ontology/
 | `Model` | Specific model variant |
 | `EmbeddingModel` | Specialized embedding model |
 
+**Container Classes** (for data file validation):
+
+| Class | Data File |
+|-------|-----------|
+| `ModelDatabase` | `data/models.yaml` |
+| `FamilyDatabase` | `data/families.yaml` |
+| `CapabilityDatabase` | `data/capabilities.yaml` |
+| `TierDatabase` | `data/tiers.yaml` |
+
 ### Key Relationships
 
 ```
@@ -76,8 +85,11 @@ Namespaces:
 # Install LinkML
 pip install linkml
 
-# Validate data against schema
-linkml-validate -s ccf_models.yaml data/models.yaml
+# Validate data against schema (specify container class)
+linkml-validate -s ccf_models.yaml -C ModelDatabase data/models.yaml
+linkml-validate -s ccf_models.yaml -C FamilyDatabase data/families.yaml
+linkml-validate -s ccf_models.yaml -C CapabilityDatabase data/capabilities.yaml
+linkml-validate -s ccf_models.yaml -C TierDatabase data/tiers.yaml
 ```
 
 ### Generate Artifacts

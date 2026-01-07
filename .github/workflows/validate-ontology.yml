@@ -32,8 +32,12 @@ jobs:
       - name: Validate data files
         run: |
           cd knowledge/topics/models/ontology
-          for datafile in data/*.yaml; do
-            echo "Validating $datafile..."
-            linkml-validate -s ccf_models.yaml "$datafile"
-          done
+          echo "Validating families..."
+          linkml-validate -s ccf_models.yaml -C FamilyDatabase data/families.yaml
+          echo "Validating capabilities..."
+          linkml-validate -s ccf_models.yaml -C CapabilityDatabase data/capabilities.yaml
+          echo "Validating tiers..."
+          linkml-validate -s ccf_models.yaml -C TierDatabase data/tiers.yaml
+          echo "Validating models..."
+          linkml-validate -s ccf_models.yaml -C ModelDatabase data/models.yaml
           echo "All data files are valid"

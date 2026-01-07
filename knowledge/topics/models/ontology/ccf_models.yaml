@@ -104,6 +104,46 @@ enums:
 classes:
 
   # ---------------------------------------------------------------------------
+  # Container Classes (for data file validation)
+  # ---------------------------------------------------------------------------
+
+  ModelDatabase:
+    description: Container for Model instances
+    tree_root: true
+    attributes:
+      models:
+        range: Model
+        multivalued: true
+        inlined_as_list: true
+
+  FamilyDatabase:
+    description: Container for ModelFamily instances
+    tree_root: true
+    attributes:
+      families:
+        range: ModelFamily
+        multivalued: true
+        inlined_as_list: true
+
+  CapabilityDatabase:
+    description: Container for Capability instances
+    tree_root: true
+    attributes:
+      capabilities:
+        range: Capability
+        multivalued: true
+        inlined_as_list: true
+
+  TierDatabase:
+    description: Container for HardwareTier instances
+    tree_root: true
+    attributes:
+      tiers:
+        range: HardwareTier
+        multivalued: true
+        inlined_as_list: true
+
+  # ---------------------------------------------------------------------------
   # Base Classes
   # ---------------------------------------------------------------------------
 
