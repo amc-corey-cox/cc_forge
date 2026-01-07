@@ -1,0 +1,39 @@
+name: Validate Ontology
+
+on:
+  push:
+    paths:
+      - 'knowledge/topics/models/ontology/**'
+      - '.github/workflows/validate-ontology.yml'
+  pull_request:
+    paths:
+      - 'knowledge/topics/models/ontology/**'
+      - '.github/workflows/validate-ontology.yml'
+
+jobs:
+  validate-linkml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install LinkML
+        run: pip install linkml
+
+      - name: Validate schema syntax
+        run: |
+          gen-yaml-schema knowledge/topics/models/ontology/ccf_models.yaml > /dev/null
+          echo "Schema syntax is valid"
+
+      - name: Validate data files
+        run: |
+          cd knowledge/topics/models/ontology
+          for datafile in data/*.yaml; do
+            echo "Validating $datafile..."
+            linkml-validate -s ccf_models.yaml "$datafile"
+          done
+          echo "All data files are valid"
