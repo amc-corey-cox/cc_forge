@@ -2,25 +2,173 @@
 
 ## Project Vision
 
-CC Forge is a local-first AI agents development system designed to create an autonomous software development pipeline. The system runs entirely on local hardware, using local LLMs, with the goal of creating a self-improving development team of AI agents.
+CC Forge is a local-first AI coding assistant built on Ollama and open-source agent tools (Goose, Aider, etc.). The goal is to create a local alternative to cloud-based AI coding assistants like Claude Code, capable of autonomous software development tasks.
 
 ### Core Principles
 
-1. **Local-First**: All core operations run on local hardware with local models. External APIs (Claude, OpenAI) may be used for bootstrapping or oversight but are not required for operation.
+1. **Local-First**: All core operations run on local hardware with local models. External APIs may be used for bootstrapping or fallback but are not required for operation.
 
-2. **Self-Bootstrapping**: The system is used to develop itself. Once a minimal foundation exists, the agent teams work on improving and extending the system.
+2. **Tool Agnostic**: We integrate with existing tools (Goose, Aider, Continue) rather than building everything from scratch. The value is in configuration, orchestration, and local optimization.
 
 3. **Transparency**: All agent actions, decisions, and reasoning are logged and auditable. No black boxes.
 
-4. **Defense in Depth**: Multiple teams with adversarial roles ensure quality through redundancy and challenge.
+4. **Pragmatic**: Start with what works today. Iterate toward the grand vision.
 
-5. **Sustainable Learning**: The knowledge base grows organically without overwhelming the human operator.
+---
+
+## MVP: Local Coding Assistant
+
+The immediate goal is a working local coding assistant that can handle common development tasks without cloud dependencies.
+
+### Target Capabilities
+
+- **Code Generation**: Write new code from descriptions
+- **Code Modification**: Edit existing files based on instructions
+- **Code Review**: Analyze code and suggest improvements
+- **Debugging**: Help identify and fix bugs
+- **Documentation**: Generate docs and comments
+- **Git Operations**: Commit, branch, create PRs
+
+### Technology Stack
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   User Interface                     │
+│           (CLI / IDE Integration / Web)              │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│              Agent Framework Layer                   │
+│         (Goose / Aider / Custom Orchestration)       │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│                 Ollama (LLM Server)                  │
+│     ┌─────────────┬─────────────┬─────────────┐     │
+│     │  Tier 1     │  Tier 2     │  Tier 3     │     │
+│     │  GPU Fast   │  CPU Large  │  API Fallback│    │
+│     │  (7-13B)    │  (70B)      │  (External)  │    │
+│     └─────────────┴─────────────┴─────────────┘     │
+└─────────────────────────────────────────────────────┘
+```
+
+### Agent Framework Evaluation
+
+We'll evaluate existing tools before building custom:
+
+| Tool | Strengths | Considerations |
+|------|-----------|----------------|
+| **Goose** | Block/Square backed, extensible, MCP support | Newer, evolving |
+| **Aider** | Mature, git-aware, proven | Python-focused |
+| **Continue** | IDE integration, multiple models | IDE-dependent |
+| **Custom** | Full control | More work |
+
+**Initial approach**: Start with Goose or Aider, extend as needed.
+
+---
+
+## Model Strategy: Tiered Hybrid Approach
+
+Local-first doesn't mean local-only. We use the right tool for the job:
+
+| Tier | Runs On | Speed | Quality | Use Cases |
+|------|---------|-------|---------|-----------|
+| **Tier 1: GPU** | Intel ARC / NVIDIA | Fast | Good | Quick edits, classification, simple tasks |
+| **Tier 2: CPU** | System RAM (64GB+) | Slow | Better | Complex code gen, analysis, reasoning |
+| **Tier 3: API** | External | Fast | Best | When local isn't good enough |
+
+### Model Selection Logic
+
+- Start with Tier 1 (GPU) for speed
+- Escalate to Tier 2 (CPU) for quality-critical tasks
+- Escalate to Tier 3 (API) only when necessary and explicitly permitted
+
+### Constraints
+
+- GPU VRAM limits model size (7B-13B class typical)
+- CPU can run larger models (70B) but slowly
+- API has cost/privacy implications — use sparingly
+
+**Key Insight**: Most tasks don't need the best model. Classification, routing, simple edits can use small fast models. Reserve heavyweight inference for complex reasoning.
+
+---
+
+## Local Infrastructure
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Host System                        │
+│  ┌─────────────────────────────────────────────┐   │
+│  │            Docker Environment                │   │
+│  │  ┌─────────────┐  ┌─────────────────────┐   │   │
+│  │  │   Ollama    │  │   Agent Runtime     │   │   │
+│  │  │   (LLMs)    │  │   (Goose/Aider)     │   │   │
+│  │  └─────────────┘  └─────────────────────┘   │   │
+│  └─────────────────────────────────────────────┘   │
+│                                                      │
+│  GPU: Intel ARC / NVIDIA (via appropriate runtime)  │
+│  Storage: Local persistent volumes                  │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## External Knowledge Resources
+
+Understanding AI concepts and model capabilities is maintained in separate repositories:
+
+| Repository | Purpose |
+|------------|---------|
+| **cc_ai_knowledge** | Curated AI/ML concepts, explanations, learning resources |
+| **cc_ai_model_ontology** | Structured catalog of models, capabilities, deployment constraints |
+
+These provide context for decision-making but are not runtime dependencies.
+
+---
+
+## Security Considerations
+
+### Threat Model
+
+- Agents should not exfiltrate data
+- Agents should not make external network calls without explicit permission
+- All agent actions are logged and auditable
+- Destructive operations require human approval (configurable)
+
+### Sandboxing
+
+- Agents run in isolated containers (when using Docker)
+- Network access is whitelist-only
+- File system access is scoped to workspace
+- Git operations are the primary external interface
+
+### Secrets Management
+
+- No secrets stored in repository
+- System-specific configuration via environment variables
+- Local secrets file (gitignored) for development
+
+---
+
+## Success Metrics (MVP)
+
+1. **Works offline**: Core functionality without internet
+2. **Useful daily**: Handles common coding tasks reliably
+3. **Fast enough**: Tier 1 tasks complete in seconds, not minutes
+4. **Quality sufficient**: Output quality acceptable for real work
+5. **Easy to use**: Setup and operation are straightforward
+
+---
+
+# Future Vision: Multi-Agent Team Architecture
+
+The following describes the long-term vision for CC Forge. This is **aspirational** — we build toward it as the MVP matures. The system is designed to be self-improving: agents working here build the tools that agents (including themselves) will use.
 
 ---
 
 ## Team Architecture
 
-The system consists of five specialized agent teams, each with distinct responsibilities and adversarial relationships designed to ensure quality.
+The full system envisions five specialized agent teams with adversarial relationships designed to ensure quality through defense in depth.
 
 ```
                     ┌─────────────────┐
@@ -32,8 +180,8 @@ The system consists of five specialized agent teams, each with distinct responsi
         │                    │                    │
         ▼                    ▼                    ▼
  ┌─────────────┐      ┌──────────┐        ┌──────────────┐
- │Triage Team  │      │ Dev Team │        │ Knowledge    │
- │(Prioritize) │─────►│          │        │ Base System  │
+ │Triage Team  │      │ Dev Team │        │  External    │
+ │(Prioritize) │─────►│          │        │  Knowledge   │
  └─────────────┘      └────┬─────┘        └──────────────┘
         ▲                  │
         │                  ▼
@@ -128,14 +276,14 @@ The system consists of five specialized agent teams, each with distinct responsi
 
 ---
 
-## Knowledge Base System
+## Knowledge Base Integration (Future)
 
-The knowledge base is **foundational infrastructure**, not a separate product. It serves two audiences with one system:
+While the knowledge base now lives in separate repositories (cc_ai_knowledge, cc_ai_model_ontology), it remains **foundational infrastructure** for the multi-agent system:
 
 ```
 ┌─────────────────────────────────────────┐
-│           Knowledge Base                │
-│  (AI concepts, project context, docs)   │
+│     External Knowledge Repositories     │
+│  (AI concepts, model catalog, docs)     │
 └──────────────┬──────────────────────────┘
                │
        ┌───────┴───────┐
@@ -151,42 +299,28 @@ The knowledge base is **foundational infrastructure**, not a separate product. I
 
 - **Agents need context**: RAG (retrieval-augmented generation) makes small models punch above their weight
 - **Human needs learning**: Stay current with AI without drowning in the firehose
-- **Shared investment**: One system, two purposes, compounding value
+- **Shared investment**: Separate repos, shared value, compounding returns
 
-### Goals
+### Future RAG Integration
 
-1. **Capture Current State**: Overview of the AI field as it exists
-2. **Curated Learning Path**: Curriculum using excellent external sources
-3. **Cutting Edge Tracking**: Follow new developments as they happen
-4. **Digestible Updates**: Summarize the firehose into actionable insights
-5. **Agent Context**: Provide retrieval for agent decision-making
-
-### Components
-
-- **Project Knowledge**: Architecture, conventions, decisions (for agents)
-- **AI Concepts**: Key ideas agents and human need to understand
-- **Foundational Curriculum**: Structured learning path for AI fundamentals
-- **Research Tracker**: Monitor arXiv, major labs, key researchers
-- **News Digest**: Regular summaries of significant developments
-- **Reading Queue**: Prioritized list of papers/posts worth reading
-
-### Implementation Strategy
-
-Start simple, add complexity when proven valuable:
-
-1. **Phase 1**: Markdown files, organized by topic, grep for search
-2. **Phase 2**: Vector embeddings, semantic search, RAG API
-3. **Phase 3**: Automated ingestion, summarization, curation
-
-### Anti-Goals
-
-- NOT trying to replace comprehensive resources like Papers With Code
-- NOT trying to be an exhaustive database
-- NOT fully automated — human curation remains important
+- Agents query cc_ai_knowledge for concept understanding
+- Agents query cc_ai_model_ontology for model selection decisions
+- Project-specific knowledge stays local in cc_forge
 
 ---
 
-## Operating Modes
+## Data Flow (Future Multi-Agent)
+
+1. **ROADMAP** → Triage Team → **Issues**
+2. **Issues** → Dev Team → **PRs**
+3. **PRs** → Test Team → **Test Coverage**
+4. **PRs + Tests** → Red Team → **Review Feedback / New Issues**
+5. **Tests** → Blue Team → **Quality Reports / New Issues**
+6. **External Knowledge** → All Teams → **Context for Decisions**
+
+---
+
+## Operating Modes (Future)
 
 ### Bootstrap Mode
 
@@ -206,9 +340,9 @@ Used once the system is stable and self-maintaining.
 - Automated PR creation and review cycles
 - Knowledge base updates flow automatically
 
-### Hybrid Mode
+### Hybrid Mode (Expected Steady State)
 
-The expected steady-state operation.
+The expected long-term operation mode.
 
 - Most routine work handled autonomously
 - Significant decisions flagged for human review
@@ -217,123 +351,29 @@ The expected steady-state operation.
 
 ---
 
-## Technical Architecture
-
-### Local Infrastructure
-
-```
-┌─────────────────────────────────────────────────────┐
-│                   Host System                        │
-│  ┌─────────────────────────────────────────────┐   │
-│  │            Docker Environment                │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────────┐ │   │
-│  │  │ Ollama  │  │ Agent   │  │ Knowledge   │ │   │
-│  │  │ (LLMs)  │  │ Runtime │  │ Base Store  │ │   │
-│  │  └─────────┘  └─────────┘  └─────────────┘ │   │
-│  └─────────────────────────────────────────────┘   │
-│                                                      │
-│  GPU: Intel ARC (via IPEX-LLM or similar)          │
-│  Storage: Local persistent volumes                  │
-└─────────────────────────────────────────────────────┘
-```
-
-### Model Strategy: Tiered Hybrid Approach
-
-Local-first doesn't mean local-only. We use the right tool for the job:
-
-| Tier | Runs On | Speed | Quality | Use Cases |
-|------|---------|-------|---------|-----------|
-| **Tier 1: GPU** | Intel ARC | Fast | Good | Classification, simple edits, summaries |
-| **Tier 2: CPU** | System RAM | Slow | Better | Complex code gen, analysis, reasoning |
-| **Tier 3: API** | External | Fast | Best | When local isn't good enough |
-
-**Model Selection Logic**:
-- Start with Tier 1 (GPU) for speed
-- Escalate to Tier 2 (CPU) for quality-critical tasks
-- Escalate to Tier 3 (API) only when necessary
-
-**Constraints**:
-- GPU VRAM limits model size (likely 7B-13B class)
-- CPU can run larger models (70B) but slowly
-- API has cost/privacy implications — use sparingly
-
-**Key Insight**: Most agent tasks don't need the best model. Classification, routing, simple edits can use small fast models. Reserve heavyweight inference for where it matters.
-
-### Data Flow
-
-1. **Issues** → Dev Team → **PRs**
-2. **PRs** → Test Team → **Test Coverage**
-3. **PRs + Tests** → Red Team → **Review Feedback**
-4. **Tests** → Blue Team → **Quality Reports**
-5. **External Sources** → Knowledge Base → **Digests**
-
----
-
-## Security Considerations
-
-### Threat Model
-
-- Agents should not be able to exfiltrate data
-- Agents should not be able to make external network calls without explicit permission
-- All agent actions are logged and auditable
-- Destructive operations require human approval
-
-### Sandboxing
-
-- Agents run in isolated containers
-- Network access is whitelist-only
-- File system access is scoped to workspace
-- Git operations are the primary external interface
-
-### Secrets Management
-
-- No secrets stored in repository
-- System-specific configuration via environment variables
-- GitHub secrets for CI/CD operations
-- Local secrets file (gitignored) for development
-
----
-
-## Success Metrics
-
-### Development Quality
-
-- PR acceptance rate after Red Team review
-- Test coverage percentage
-- Mutation testing survival rate (lower is better)
-- Time from issue to merged PR
-
-### Knowledge Base Effectiveness
-
-- Time spent by human staying current (should decrease)
-- Comprehension of new developments (subjective)
-- Actionable insights surfaced
-
-### System Health
-
-- Agent uptime and reliability
-- Resource utilization efficiency
-- Self-improvement velocity (features added by agents)
-
----
-
 ## Open Questions
 
-These are decisions to be made as the system evolves:
-
-1. **Model Selection**: Which local models work best for each team's tasks?
-2. **Agent Framework**: Build custom, or use existing (LangGraph, CrewAI, etc.)?
-3. **Knowledge Base Storage**: Vector DB, graph DB, or simpler approach?
-4. **Inter-Agent Communication**: Direct calls, message queue, or shared state?
-5. **Human Interface**: CLI, web dashboard, or IDE integration?
+1. **Agent Framework**: Goose, Aider, or custom?
+2. **Model Selection**: Which models work best for each task type?
+3. **Context Management**: How to give agents enough context without overwhelming them?
+4. **Inter-Agent Communication**: How do teams coordinate in the future vision?
+5. **Human Interface**: CLI primary, with web dashboard later?
 
 ---
 
 ## Appendix: Glossary
 
 - **Agent**: An AI system that can take actions autonomously
-- **Bootstrap Mode**: Human-assisted initial development phase
+- **Goose**: Open-source AI agent framework from Block
+- **Aider**: AI pair programming tool
 - **Local-First**: Prioritizing local computation over cloud APIs
 - **Mutation Testing**: Intentionally breaking code to verify tests catch failures
+- **Ollama**: Local LLM server
+- **RAG**: Retrieval-Augmented Generation
 - **Red Team**: Adversarial review focused on finding weaknesses
 - **Blue Team**: Defensive verification focused on test quality
+- **Tier**: Hardware/model category in our hybrid strategy
+
+---
+
+*Last updated: 2025-01-27 — Restructured for local coding assistant MVP*
