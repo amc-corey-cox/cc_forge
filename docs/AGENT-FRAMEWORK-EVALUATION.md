@@ -233,10 +233,10 @@ Consider Cline for Phase 6 (IDE Integration) due to its MCP support and VS Code 
 
 ### Model Recommendations
 
-See `docs/models/` for coding model evaluation. Key models to test:
-- qwen2.5-coder (7B/14B)
-- deepseek-coder-v2
-- codellama
+See deployment guides for hardware-specific model details:
+- GPU models: `models-intel-arc.md` (qwen2.5-coder-7b, deepseek-r1-7b)
+- CPU models: `models-cpu-tier.md` (qwen2.5-coder-32b, llama-3.3-70b)
+- Model registry: `models/` (tracking our local testing status)
 
 ---
 
