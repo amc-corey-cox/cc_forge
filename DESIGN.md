@@ -115,19 +115,7 @@ Local-first doesn't mean local-only. We use the right tool for the job:
 
 ## Remote and Mobile Access
 
-While local-first, the system should be accessible from anywhere via secure networking.
-
-### Architecture
-
-```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│  Mobile Device   │     │  Remote Laptop   │     │  Home Server     │
-│  (Phone/Tablet)  │────▶│  (Away from home)│────▶│  (Ollama + UI)   │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
-         │                        │                        │
-         └────────────────────────┴────────────────────────┘
-                           Tailscale VPN
-```
+While local-first, the system should be accessible from anywhere via secure networking. Tailscale provides a mesh VPN that connects all your devices without exposing any services to the public internet. Your phone, laptop, and home server all join the same private network, allowing you to access Ollama and OpenWebUI from anywhere as if you were on your home LAN.
 
 ### Components
 
