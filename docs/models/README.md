@@ -1,6 +1,6 @@
 # Model Registry
 
-This directory contains our local model registry — tracking which AI models we've tested, their capabilities, and when to use them.
+This directory contains our **operational** model registry — tracking which AI models we've tested on our hardware, their performance, and when to use them.
 
 ## Purpose
 
@@ -9,6 +9,17 @@ The model registry serves multiple purposes:
 2. **Selection**: Help agents choose the right model for a task
 3. **Benchmarking**: Track performance over time
 4. **Decisions**: Record why we use certain models for certain tasks
+
+## Relationship to Model Ontology
+
+This registry is **operational** (what works for us). For **informational** reference data about models in general, see [cc_ai_model_ontology](https://github.com/amc-corey-cox/cc_ai_model_ontology):
+
+| This Registry | Model Ontology |
+|---------------|----------------|
+| Our hardware benchmarks | General model specs |
+| What we've tested | What exists |
+| Our use case recommendations | Capability definitions |
+| Operational status | Reference data |
 
 ## File Format
 

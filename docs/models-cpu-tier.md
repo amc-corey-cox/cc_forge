@@ -196,5 +196,5 @@ For a typical response (500 tokens) on 70B Q4_K_M:
 
 - GPU tier: `models-intel-arc.md`
 - Quantization guide: `models-quantization.md`
-- Model selection: `/knowledge/topics/models/_selection-guide.md`
-- Model families: `/knowledge/topics/models/families/`
+- Model registry: `models/` (tracking what we've tested locally)
+- Model ontology: [cc_ai_model_ontology](https://github.com/amc-corey-cox/cc_ai_model_ontology) (model families, capabilities)

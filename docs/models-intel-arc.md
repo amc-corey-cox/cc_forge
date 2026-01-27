@@ -211,4 +211,5 @@ Common issues:
 - Full setup guide: `LOCAL-OLLAMA-SETUP.md`
 - CPU tier guide: `models-cpu-tier.md`
 - Quantization guide: `models-quantization.md`
-- Model selection: `/knowledge/topics/models/_selection-guide.md`
+- Model registry: `models/` (tracking what we've tested locally)
+- Model ontology: [cc_ai_model_ontology](https://github.com/amc-corey-cox/cc_ai_model_ontology) (model families, capabilities)
