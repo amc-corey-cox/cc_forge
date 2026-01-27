@@ -180,13 +180,38 @@ These phases represent improvements beyond the basic MVP. Prioritize based on wh
 
 ---
 
+## Phase 7: Remote and Mobile Access
+
+**Goal**: Access your local AI assistant from anywhere.
+
+### Tailscale Setup
+- [ ] Install Tailscale on home server
+- [ ] Configure secure access to local services
+- [ ] Document network topology
+
+### OpenWebUI
+- [ ] Install OpenWebUI for web-based chat interface
+- [ ] Configure to use local Ollama backend
+- [ ] Test mobile browser access via Tailscale
+- [ ] Evaluate mobile experience
+
+### Remote Development
+- [ ] SSH + Goose/Aider for remote terminal sessions
+- [ ] Document workflow for remote coding
+
+### Security
+- [ ] Ensure services only accessible via Tailscale
+- [ ] Configure Tailscale ACLs for device access control
+
+---
+
 # Long-Term Vision: Multi-Agent Teams
 
 The following phases represent the full vision for CC Forge as a self-improving multi-agent development system. These build on a mature MVP and should be tackled incrementally as the foundation proves itself.
 
 ---
 
-## Phase 7: Agent Framework Formalization
+## Phase 8: Agent Framework Formalization
 
 **Goal**: Generalize the MVP agent into a reusable framework for multiple specialized agents.
 
@@ -210,7 +235,7 @@ The following phases represent the full vision for CC Forge as a self-improving 
 
 ---
 
-## Phase 8: Triage Team
+## Phase 9: Triage Team
 
 **Goal**: Automate issue management and prioritization.
 
@@ -233,7 +258,7 @@ The following phases represent the full vision for CC Forge as a self-improving 
 
 ---
 
-## Phase 9: Dev Team (Full)
+## Phase 10: Dev Team (Full)
 
 **Goal**: Graduate the MVP agent into a full Dev Team with multiple capabilities.
 
@@ -256,7 +281,7 @@ The following phases represent the full vision for CC Forge as a self-improving 
 
 ---
 
-## Phase 10: Test Team
+## Phase 11: Test Team
 
 **Goal**: Automated test generation and coverage analysis.
 
@@ -279,7 +304,7 @@ The following phases represent the full vision for CC Forge as a self-improving 
 
 ---
 
-## Phase 11: Red Team
+## Phase 12: Red Team
 
 **Goal**: Adversarial review of PRs and implementations.
 
@@ -304,7 +329,7 @@ The following phases represent the full vision for CC Forge as a self-improving 
 
 ---
 
-## Phase 12: Blue Team
+## Phase 13: Blue Team
 
 **Goal**: Test suite validation through mutation testing.
 
@@ -327,7 +352,7 @@ The following phases represent the full vision for CC Forge as a self-improving 
 
 ---
 
-## Phase 13: Knowledge Base Enhancement
+## Phase 14: Knowledge Base Enhancement
 
 **Goal**: Full-featured knowledge system with curation (extends cc_ai_knowledge).
 
@@ -357,7 +382,7 @@ The following phases represent the full vision for CC Forge as a self-improving 
 
 ---
 
-## Phase 14: Integration and Polish
+## Phase 15: Integration and Polish
 
 **Goal**: Connect all systems and refine the experience.
 
