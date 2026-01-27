@@ -157,7 +157,7 @@ This project has companion repositories that provide context and reference mater
 
 ### cc_ai_knowledge (Reference)
 
-**Repository**: `cc_ai_knowledge`
+**Repository**: [cc_ai_knowledge](https://github.com/amc-corey-cox/cc_ai_knowledge)
 
 A curated knowledge base explaining AI/ML concepts. Use this to understand:
 - What is quantization? How do transformers work?
@@ -168,7 +168,7 @@ When working in cc_forge, reference this knowledge base to ensure understanding 
 
 ### cc_ai_model_ontology (Reference)
 
-**Repository**: `cc_ai_model_ontology`
+**Repository**: [cc_ai_model_ontology](https://github.com/amc-corey-cox/cc_ai_model_ontology)
 
 A LinkML ontology cataloging AI models, capabilities, and deployment constraints. Use this for:
 - Structured information about model families and variants
@@ -222,8 +222,8 @@ These files contain important context:
 
 | Repository | Purpose |
 |------------|---------|
-| `cc_ai_knowledge` | AI concepts and curated understanding |
-| `cc_ai_model_ontology` | Structured model catalog (LinkML) |
+| [cc_ai_knowledge](https://github.com/amc-corey-cox/cc_ai_knowledge) | AI concepts and curated understanding |
+| [cc_ai_model_ontology](https://github.com/amc-corey-cox/cc_ai_model_ontology) | Structured model catalog (LinkML) |
 
 ---
 
