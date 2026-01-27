@@ -65,12 +65,12 @@ Phases 1-3 focus on building a useful local alternative to cloud-based AI coding
 - [ ] Document limitations with local models
 
 ### Comparison
-- [ ] Document pros/cons of each for our use case
-- [ ] Make initial framework selection
+- [x] Document pros/cons of each for our use case
+- [x] Make initial framework selection
 - [ ] Identify gaps that may need custom work
 
 ### Deliverables
-- [ ] `docs/AGENT-FRAMEWORK-EVALUATION.md` — Comparison and recommendation
+- [x] `docs/AGENT-FRAMEWORK-EVALUATION.md` — Comparison and recommendation
 - [ ] Working agent setup with local Ollama
 
 ---
