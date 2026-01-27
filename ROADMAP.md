@@ -17,7 +17,7 @@ Phases 1-3 focus on building a useful local alternative to cloud-based AI coding
 **Goal**: Working Ollama installation with validated model performance.
 
 ### Ollama Setup
-- [ ] Ollama installed and running on home server
+- [ ] Ollama installed and running
 - [ ] GPU acceleration working (Intel ARC via IPEX-LLM or Vulkan)
 - [ ] CPU fallback configured for larger models
 - [ ] Service files for automatic startup

@@ -12,7 +12,7 @@ The model registry serves multiple purposes:
 
 ## File Format
 
-Each model has a YAML file following the schema in `../schema/model-registry.schema.json`.
+Each model has a YAML file following a common structure. See `llama-70b.yaml` for the expected fields.
 
 See `llama-70b.yaml` for an example entry.
 
@@ -54,7 +54,7 @@ Subjective ratings for our use cases:
 
 ## TODO
 
-Models to evaluate during Phase 1 (Hardware Validation):
+Models to evaluate during Phase 1 (Infrastructure Setup):
 - [ ] Llama 3.2 7B (GPU candidate)
 - [ ] Llama 3.2 13B (GPU/CPU candidate)
 - [ ] CodeLlama 7B (code-specific, GPU candidate)
