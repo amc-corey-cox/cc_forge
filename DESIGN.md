@@ -113,6 +113,44 @@ Local-first doesn't mean local-only. We use the right tool for the job:
 
 ---
 
+## Remote and Mobile Access
+
+While local-first, the system should be accessible from anywhere via secure networking.
+
+### Architecture
+
+```
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│  Mobile Device   │     │  Remote Laptop   │     │  Home Server     │
+│  (Phone/Tablet)  │────▶│  (Away from home)│────▶│  (Ollama + UI)   │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+         │                        │                        │
+         └────────────────────────┴────────────────────────┘
+                           Tailscale VPN
+```
+
+### Components
+
+| Component | Purpose |
+|-----------|---------|
+| **Tailscale** | Secure mesh VPN - access home services from anywhere without exposing to internet |
+| **OpenWebUI** | Web-based chat interface for Ollama - mobile-friendly |
+| **Goose/Aider** | CLI coding assistant - for remote terminal sessions |
+
+### Use Cases
+
+- **Mobile coding assistance**: Quick questions and code snippets from phone
+- **Remote development**: Full coding assistant when traveling
+- **Web UI fallback**: When CLI isn't convenient
+
+### Security
+
+- Services accessible only via Tailscale (not public internet)
+- No ports exposed to the world
+- Device-level access control via Tailscale ACLs
+
+---
+
 ## External Knowledge Resources
 
 Understanding AI concepts and model capabilities is maintained in separate repositories:
