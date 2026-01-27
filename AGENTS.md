@@ -68,7 +68,7 @@ When working on any team's functionality, remember this adversarial structure ex
 
 ```
 cc_forge/
-├── AGENTS.md           # This file (agent instructions)
+├── CLAUDE.md           # This file (agent instructions)
 ├── DESIGN.md           # Architectural vision
 ├── ROADMAP.md          # Implementation phases
 ├── README.md           # Public-facing description
@@ -77,9 +77,7 @@ cc_forge/
 │   └── teams/          # Team-specific logic
 ├── tests/              # Test suites
 ├── docker/             # Container definitions
-├── docs/               # Operational documentation (setup guides, etc.)
-├── knowledge/          # Educational content for human learning
-│   └── topics/models/ontology/  # LinkML model catalog
+├── docs/               # Operational documentation (setup guides, model registry)
 └── scripts/            # Utility scripts
 ```
 
@@ -153,32 +151,32 @@ When implementing team functionality, understand the boundaries:
 
 ---
 
-## Knowledge Base Guidelines
+## Related Repositories
 
-The knowledge base (`knowledge/`) is an **educational resource for the human maintainer** to understand the AI landscape. It is NOT operational documentation, NOT a database for agents to query, and NOT a place for system-specific configuration.
+This project has companion repositories that provide context and reference material:
 
-### Purpose
+### cc_ai_knowledge (Reference)
 
-The maintainer is an expert programmer learning about AI. The knowledge base distills the firehose of AI information into curated, understandable content that builds mental models.
+**Repository**: `cc_ai_knowledge`
 
-### What Belongs in `knowledge/`
+A curated knowledge base explaining AI/ML concepts. Use this to understand:
+- What is quantization? How do transformers work?
+- How do different approaches compare? What are the tradeoffs?
+- Curated insights from papers, blogs, and community experience
 
-- **Conceptual explanations**: What is quantization? How do transformers work?
-- **Landscape orientation**: How do different approaches compare? What are the tradeoffs?
-- **Curated insights**: Distilled understanding from papers, blogs, community experience
-- **The model ontology**: Structured catalog of models, families, and capabilities (LinkML schema in `knowledge/topics/models/ontology/`)
+When working in cc_forge, reference this knowledge base to ensure understanding aligns with documented concepts. Every claim in the knowledge base is traceable to primary sources.
 
-### What Does NOT Belong in `knowledge/`
+### cc_ai_model_ontology (Reference)
 
-- **Operational docs**: Setup guides, deployment commands → use `docs/`
-- **System-specific info**: Hardware specs, local paths → use `docs/` or `.env`
-- **Duplicated data**: Don't create markdown files that duplicate the ontology
-- **Tables of specs**: Model parameters, context lengths → already in ontology YAML
-- **Elaborate templates**: Keep it simple, don't over-engineer structure
+**Repository**: `cc_ai_model_ontology`
 
-### Key Principle
+A LinkML ontology cataloging AI models, capabilities, and deployment constraints. Use this for:
+- Structured information about model families and variants
+- Capability hierarchies (code generation, reasoning, etc.)
+- Hardware tier definitions and deployment constraints
+- Cross-references to Ollama, HuggingFace, etc.
 
-When adding to the knowledge base, ask: "Does this help the human understand something, or is it just data/reference material?" If it's just data, it probably belongs in the ontology or docs instead.
+When implementing model selection or discussing model capabilities, reference this ontology for consistent terminology and accurate specifications.
 
 ---
 
@@ -216,8 +214,16 @@ These files contain important context:
 | `DESIGN.md` | Full architectural vision |
 | `ROADMAP.md` | Implementation phases and priorities |
 | `README.md` | Public project description |
+| `docs/` | Operational documentation, model registry |
 | `docker/` | Container configurations (when created) |
 | `src/agents/` | Agent implementations (when created) |
+
+### External References
+
+| Repository | Purpose |
+|------------|---------|
+| `cc_ai_knowledge` | AI concepts and curated understanding |
+| `cc_ai_model_ontology` | Structured model catalog (LinkML) |
 
 ---
 
@@ -232,4 +238,4 @@ This document should evolve as the project evolves. If you identify:
 
 ---
 
-*Last updated: Initial creation during bootstrap phase*
+*Last updated: Repository restructure - knowledge base and ontology split to separate repos*

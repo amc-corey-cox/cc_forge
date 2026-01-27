@@ -1,0 +1,71 @@
+# Model Registry Entry: Llama 70B
+# This is a template/example - update with actual benchmark data
+
+id: model-llama-70b
+name: "Llama 3 70B"
+version: "3.1"
+
+source:
+  provider: ollama
+  model_id: "llama3.1:70b"
+  url: "https://ollama.com/library/llama3.1"
+  base_model: null  # This is a base model
+
+tier: cpu  # Too large for GPU, runs on system RAM
+
+status: validated  # Confirmed working on home server
+tested: 2025-01-02
+
+capabilities:
+  tasks:
+    - text-generation
+    - code-generation
+    - code-review
+    - summarization
+    - reasoning
+    - instruction-following
+    - chat
+  context_length: 128000
+  languages:
+    - python
+    - javascript
+    - typescript
+    - go
+    - rust
+    - english
+
+requirements:
+  vram_gb: null  # N/A - runs on CPU
+  ram_gb: 48  # Approximate, depends on quantization
+  quantization: "Q4_K_M"  # Typical Ollama default
+  parameters: "70B"
+
+performance:
+  # TODO: Fill in with actual benchmarks from home server
+  tokens_per_second: null
+  time_to_first_token_ms: null
+  load_time_seconds: null
+  hardware_notes: "Runs on CPU/RAM, not GPU"
+
+quality:
+  code_generation: untested  # TODO: Evaluate
+  code_review: untested
+  summarization: untested
+  instruction_following: untested
+  notes: "Known to be capable but slow on CPU inference"
+
+use_cases:
+  - task: "Complex code generation"
+    why: "Highest quality local model, worth the latency for important tasks"
+    alternatives: ["model-llama-7b", "api-claude"]
+  - task: "Detailed code review"
+    why: "Can catch subtle issues smaller models miss"
+    alternatives: ["api-claude"]
+
+license: "Llama 3.1 Community License"
+
+notes: |
+  - Confirmed running on home server via Ollama (CPU mode)
+  - Slow but capable - use for quality-critical tasks
+  - Consider for Tier 2 (CPU) in our hybrid model strategy
+  - Need to benchmark actual performance
