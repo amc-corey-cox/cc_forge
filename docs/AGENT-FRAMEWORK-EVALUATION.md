@@ -6,11 +6,13 @@ Evaluation of AI coding assistant frameworks for cc_forge's local-first MVP.
 
 ## Executive Summary
 
-**Recommendation: Goose** as the primary framework for cc_forge.
+**Recommendation: Aider** as the primary framework for cc_forge's local-first MVP.
 
-Goose's MCP (Model Context Protocol) architecture aligns with cc_forge's vision of extensible, self-improving agent systems. The framework allows building custom tools that agents can discover dynamically—essential for the planned multi-team architecture.
+After hands-on testing, Goose's MCP architecture—while promising for future extensibility—has fundamental issues with local Ollama models. Tool calling fails consistently across multiple models tested. Aider's diff-based editing approach works reliably with local models, making it the practical choice for now.
 
-**Secondary Option: Aider** for git-focused workflows where MCP extensibility isn't needed.
+**Secondary Option: Goose** for when cloud APIs are acceptable or local model tool-calling improves.
+
+**Not Recommended: SERA** — Requires 80GB VRAM (A100/H100), no Ollama support.
 
 ---
 
@@ -47,11 +49,12 @@ Based on cc_forge's requirements (see DESIGN.md):
 - **Rust Core**: Performance-focused architecture (59% Rust, 33% TypeScript)
 
 **Limitations**:
+- **Tool calling fails with local models** — tested with qwen2.5-coder, llama3.1, llama3-groq-tool-use
 - Git integration less mature than Aider
 - CLI configuration requires manual `goose configure` setup
 - Desktop app separate from CLI installation
 
-**cc_forge Fit**: Excellent. MCP enables the planned Dev/Test/Red/Blue team tools to be exposed as discoverable services that Goose instances can use.
+**cc_forge Fit**: Poor for local-first MVP (tool calling issues). Promising for future when local models improve or when cloud APIs are acceptable.
 
 **Links**: [GitHub](https://github.com/block/goose) | [Ollama Docs](https://docs.ollama.com/integrations/goose)
 
@@ -77,7 +80,7 @@ Based on cc_forge's requirements (see DESIGN.md):
 - Less suitable for building custom tool ecosystems
 - Model capability varies significantly (check Aider's leaderboard)
 
-**cc_forge Fit**: Good for straightforward coding tasks, but lacks extensibility for the multi-agent vision.
+**cc_forge Fit**: Excellent for local-first MVP. Works reliably with local Ollama models. Extensibility limitations acceptable for Phase 1-3.
 
 **Links**: [GitHub](https://github.com/paul-gauthier/aider) | [Ollama Docs](https://aider.chat/docs/llms/ollama.html)
 
@@ -147,89 +150,107 @@ Based on cc_forge's requirements (see DESIGN.md):
 
 ---
 
-## Recommendation
+## Hands-On Testing Results (2026-01-29)
 
-### Primary: Goose
+### Goose + Local Ollama: FAILED
 
-Goose is the best fit for cc_forge because:
+**Setup**: Goose installed to `/usr/local/bin`, configured with Ollama endpoint.
 
-1. **Extensibility via MCP**: The planned multi-team system (Dev, Test, Red, Blue) can expose capabilities as MCP servers. Goose instances discover and use these tools dynamically.
+**Models Tested**:
+- `qwen2.5-coder:7b-instruct-q4_K_M`
+- `llama3.1:latest`
+- `llama3-groq-tool-use:8b`
 
-2. **Architecture Alignment**: cc_forge aims to be self-improving—agents build tools for agents. MCP enables this pattern without modifying the core framework.
+**Results**: Tool calling fails with all local models tested.
+- Models acknowledge tools exist but don't execute them
+- File creation tasks resulted in only todo tool invocations, no actual files
+- This is a known community issue with Goose + local models
 
-3. **Local-First Design**: Native Ollama support, no cloud dependencies required.
+**Root Cause**: Goose relies heavily on function/tool calling, which requires specific model training. Most local models lack robust tool-calling capabilities, causing the agent loop to fail.
 
-4. **Terminal-First**: Matches the CLI-focused workflow.
+### Aider + Local Ollama: SUCCESS
 
-5. **Active Development**: Regular releases, responsive maintainers, growing ecosystem.
+**Setup**: Aider installed via pipx to `/usr/local/bin`.
 
-### Secondary: Aider
+**Models Tested**:
+- `qwen2.5-coder:7b-instruct-q4_K_M`
 
-Use Aider when:
-- Primary task is git-aware code modification
-- MCP extensibility isn't needed
-- Simpler setup is preferred
+**Results**: Works reliably.
+- File creation: ✓ Successfully created hello_world function
+- Edit application: ✓ Diff-based edits applied correctly
+- Performance: 607 tokens sent, 68 received — fast response
 
-### Future: Cline
+**Why It Works**: Aider uses diff-based editing (whole file or unified diff format) rather than tool calling. The model outputs code directly, and Aider parses and applies the diff. This approach is model-agnostic and works with any instruction-following model.
 
-Consider Cline for Phase 6 (IDE Integration) due to its MCP support and VS Code presence.
+### SERA (AI2): NOT SUITABLE
+
+**Overview**: AI2's new open-source coding agent family (8B-32B parameters).
+
+**Performance**: SERA-32B achieves 54.2% on SWE-Bench Verified.
+
+**Why Not Suitable**:
+- Requires 80GB VRAM (A100/H100 GPUs)
+- No GGUF files or Ollama support
+- Recommended deployment is Modal (cloud), not local
+- Great for cloud deployment and codebase fine-tuning, not local-first
 
 ---
 
-## Next Steps: Hands-On Testing
+## Recommendation
 
-### Phase 1: Goose Evaluation
+### Primary: Aider
 
-1. **Install**
-   ```bash
-   # Via pipx (recommended)
-   pipx install goose-ai
+Aider is the practical choice for cc_forge's local-first MVP because:
 
-   # Or via Homebrew
-   brew install goose
-   ```
+1. **Actually Works with Local Models**: Diff-based editing doesn't require tool calling, which local models struggle with.
 
-2. **Configure Ollama**
-   ```bash
-   goose configure
-   # Select Ollama provider
-   # Set endpoint: http://localhost:11434
-   ```
+2. **Excellent Git Integration**: Auto-commits with descriptive messages, easy undo — critical for iterative development.
 
-3. **Test Scenarios**
-   - [ ] Create a new Python file from description
-   - [ ] Edit an existing file
-   - [ ] Run and debug code
-   - [ ] Git commit workflow
-   - [ ] Multi-file changes
+3. **Terminal-First**: Matches the CLI-focused workflow.
 
-4. **Document Findings**
-   - Response quality with local models
-   - Latency and performance
-   - Failure modes and recovery
+4. **Simple Setup**: `pipx install aider-chat` and configure Ollama endpoint.
 
-### Phase 2: Aider Comparison (Optional)
+5. **Active Development**: Regular updates, responsive maintainers, strong community.
 
-1. **Install**
-   ```bash
-   pipx install aider-chat
-   ```
+### Secondary: Goose
 
-2. **Configure**
-   ```bash
-   # Set Ollama as provider
-   export OLLAMA_API_BASE=http://localhost:11434
-   aider --model ollama/qwen2.5-coder
-   ```
+Consider Goose when:
+- Using cloud APIs (Claude, GPT-4) with reliable tool calling
+- MCP extensibility is required for custom tooling
+- Local model tool-calling improves in the future
 
-3. **Same test scenarios** as Goose for comparison
+Goose's MCP architecture remains compelling for the long-term multi-agent vision. Revisit when local models support tool calling reliably.
+
+### Future Considerations
+
+- **Cline**: Consider for Phase 6 (IDE Integration) due to MCP support and VS Code presence.
+- **SERA**: Watch for Ollama/GGUF support — good performance if hardware requirements drop.
+
+---
+
+## Next Steps
+
+### Completed Testing
+
+- [x] Goose installed and configured with Ollama
+- [x] Goose tested with multiple local models (failed — tool calling issues)
+- [x] Aider installed via pipx
+- [x] Aider tested with qwen2.5-coder (success)
+- [x] SERA evaluated (not suitable for local deployment)
+
+### Remaining for MVP
+
+- [ ] Extended Aider testing with real coding tasks
+- [ ] Test Aider git integration workflow
+- [ ] Document Aider configuration best practices
+- [ ] Evaluate Aider with larger CPU-tier models (32B/70B)
 
 ### Success Criteria
 
-- [ ] Framework connects to local Ollama
-- [ ] Basic coding tasks complete successfully
-- [ ] Performance acceptable for daily use (response < 30s for simple tasks)
-- [ ] Clear understanding of limitations with local models
+- [x] Framework connects to local Ollama
+- [x] Basic coding tasks complete successfully
+- [x] Performance acceptable for daily use (response < 30s for simple tasks)
+- [x] Clear understanding of limitations with local models
 
 ### Model Recommendations
 
@@ -251,4 +272,4 @@ See deployment guides for hardware-specific model details:
 
 ---
 
-*Last updated: 2026-01-27 — Initial evaluation*
+*Last updated: 2026-01-29 — Updated with hands-on testing results*
