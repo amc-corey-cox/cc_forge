@@ -80,16 +80,16 @@ Phases 1-3 focus on building a useful local alternative to cloud-based AI coding
 **Goal**: A working local coding assistant for daily use.
 
 ### Core Integration
-- [ ] Agent framework connected to Ollama
-- [ ] Basic coding tasks working (generate, edit, explain)
+- [x] Agent framework connected to Ollama
+- [x] Basic coding tasks working (generate, edit, explain)
 - [ ] Git operations functional (commit, branch, diff)
 - [ ] Error handling for model failures
 
 ### Quality of Life
 - [ ] Easy startup/shutdown
-- [ ] Configuration for different tasks/models
+- [x] Configuration for different tasks/models
 - [ ] Logging for debugging
-- [ ] Basic documentation for daily use
+- [x] Basic documentation for daily use
 
 ### Validation
 - [ ] Use for real work for 1+ week
@@ -97,8 +97,8 @@ Phases 1-3 focus on building a useful local alternative to cloud-based AI coding
 - [ ] Identify highest-priority improvements
 
 ### Deliverables
-- [ ] Working local coding assistant
-- [ ] `docs/USAGE.md` — How to use for common tasks
+- [x] Working local coding assistant
+- [x] `docs/USAGE.md` — How to use for common tasks
 - [ ] Issue backlog for improvements
 
 ---
