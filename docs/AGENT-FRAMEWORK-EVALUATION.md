@@ -156,6 +156,21 @@ Based on cc_forge's requirements (see DESIGN.md):
 
 **Setup**: Goose installed to `/usr/local/bin`, configured with Ollama endpoint.
 
+**Configuration** (`~/.config/goose/config.yaml`):
+```yaml
+GOOSE_PROVIDER: ollama
+GOOSE_MODEL: llama3-groq-tool-use:8b
+OLLAMA_HOST: http://localhost:11434
+OLLAMA_CONTEXT_LENGTH: 32768
+extensions:
+  developer:
+    bundled: true
+    enabled: true
+    name: developer
+    timeout: 300
+    type: builtin
+```
+
 **Models Tested**:
 - `qwen2.5-coder:7b-instruct-q4_K_M`
 - `llama3.1:latest`

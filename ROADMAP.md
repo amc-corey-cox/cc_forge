@@ -430,6 +430,9 @@ Ideas for post-v1 development, once the core system is mature:
 | 2025-01-02 | Hybrid model strategy | GPU fast/small, CPU slow/large, API fallback |
 | 2025-01-27 | Split knowledge base to separate repos | Focus cc_forge on coding assistant MVP |
 | 2025-01-27 | Evaluate existing tools (Goose, Aider) | Don't build what already exists |
+| 2026-01-29 | Aider over Goose for MVP | Goose tool-calling fails with local models; Aider's diff-based approach works |
+| 2026-01-29 | SERA not suitable | Requires 80GB VRAM (A100/H100), no Ollama/GGUF support |
+| 2026-01-29 | pipx for Python CLI tools | System-wide isolated installs without polluting pyenv/system Python |
 
 ---
 
