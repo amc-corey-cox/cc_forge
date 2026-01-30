@@ -22,15 +22,23 @@ This project prioritizes local execution. When suggesting solutions:
 - Consider resource constraints (this runs on consumer hardware)
 - Never assume unlimited compute or API budgets
 
-### 2. No System Information in Code
+### 2. No Sensitive System Information
 
-**Critical**: Do not embed any information about the host system in code or documentation:
-- No hardware specs
-- No IP addresses or network configuration
-- No usernames or paths that reveal system structure
-- No GPU/CPU model numbers
+**Intent**: Prevent exposure of information that could enable attacks or identify the system owner.
 
-System-specific configuration belongs in:
+**Avoid** (security-sensitive):
+- IP addresses and network topology (e.g., `192.168.1.50`, subnet details)
+- Absolute paths with usernames (e.g., `/home/corey/projects/...`)
+- Specific hardware model numbers (e.g., `Intel Arc A770`, `i7-12700K`)
+- Credentials, API keys, tokens
+
+**Acceptable** (not security-sensitive):
+- Hostnames without network context (e.g., `ssh myserver`)
+- Relative paths using `~` (e.g., `~/Code/cc_forge`)
+- Generic hardware tiers (e.g., "GPU tier", "CPU tier", "fast/slow")
+- Operational documentation showing how to use project infrastructure
+
+**Runtime configuration** (secrets, IPs, etc.) belongs in:
 - Environment variables
 - `.env` files (gitignored)
 - GitHub Secrets (for CI/CD)
@@ -117,7 +125,7 @@ cc_forge/
 - Modify `.gitignore` to hide files that should be tracked
 - Delete files without explicit permission
 - Push directly to `main` (use PRs)
-- Embed system-specific information
+- Embed sensitive system information (see "No Sensitive System Information" above)
 
 ---
 
@@ -238,4 +246,4 @@ This document should evolve as the project evolves. If you identify:
 
 ---
 
-*Last updated: Repository restructure - knowledge base and ontology split to separate repos*
+*Last updated: 2026-01-30 - Clarified system information guidelines*
