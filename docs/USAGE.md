@@ -229,46 +229,46 @@ aider --model ollama/qwen2.5-coder:7b-instruct-q4_K_M
 
 ---
 
-## Remote Server Setup (tesseract)
+## Remote Server Setup
 
-The local AI assistant runs on a dedicated server (tesseract) with GPU/CPU resources for Ollama.
+If you have a dedicated server running Ollama, you can use it as a remote AI development environment.
 
 ### Architecture
 
 ```
-Local Workstation                    Tesseract Server
+Local Workstation                    Remote Server
 ┌─────────────────────┐              ┌─────────────────────┐
-│ ~/Code/cc_forge     │◄──── git ───►│ ~/Code/cc_forge     │
-│ Claude Code (cloud) │              │ Aider + Ollama      │
+│ <project-path>      │◄──── git ───►│ <project-path>      │
+│ Claude Code / IDE   │              │ Aider + Ollama      │
 └─────────────────────┘              └─────────────────────┘
 ```
 
 ### Connecting
 
 ```bash
-ssh tesseract
-cd ~/Code/cc_forge
+ssh <your-server>
+cd <project-path>
 aider --model ollama/qwen2.5-coder:7b-instruct-q4_K_M
 ```
 
 ### Workflow
 
 1. **Work locally** with Claude Code (or other tools), push to GitHub
-2. **SSH to tesseract**, `git pull`, run Aider for local AI tasks
-3. **Push changes** from tesseract, pull locally when needed
+2. **SSH to remote server**, `git pull`, run Aider for local AI tasks
+3. **Push changes** from remote server, pull locally when needed
 
 ### GitHub Authentication
 
-Tesseract uses a fine-grained Personal Access Token (PAT) for GitHub push access:
+The remote server uses a fine-grained Personal Access Token (PAT) for GitHub push access:
 
-- **Token scope**: cc_forge and cc_env repos only
+- **Token scope**: Only repos needed for development
 - **Permissions**: Contents (read/write), Metadata (read)
-- **Storage**: `~/.git-credentials` on tesseract
+- **Storage**: `~/.git-credentials` on the server
 
 To update the token (when it expires):
 
 ```bash
-# On tesseract
+# On the remote server
 # Delete old credential
 git credential reject <<EOF
 protocol=https
@@ -280,15 +280,15 @@ EOF
 
 ### Available Models
 
-Check available models on tesseract:
+Check available models on your server:
 
 ```bash
-ssh tesseract "ollama list"
+ssh <your-server> "ollama list"
 ```
 
 Common models:
-- `qwen2.5-coder:7b-instruct-q4_K_M` — Fast (GPU), good for simple tasks
-- `llama3.3:70b-instruct-q6_K` — Slow (CPU), better for complex tasks
+- `qwen2.5-coder:7b-instruct-q4_K_M` — Faster, good for simple tasks
+- `llama3.3:70b-instruct-q6_K` — Slower, better for complex tasks
 
 ---
 
