@@ -24,7 +24,7 @@ The system also includes a knowledge base component for tracking developments in
 
 ## Status
 
-This project is in early development (Phase 0: Foundation).
+This project is in active development (Phase 3: MVP Integration). Local AI coding assistant is functional.
 
 See [ROADMAP.md](ROADMAP.md) for the implementation plan.
 
