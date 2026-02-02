@@ -1,5 +1,5 @@
 [Unit]
-Description=Ollama Service (Vulkan Backend)
+Description=Ollama Service (Vulkan GPU - Intel Arc)
 After=network-online.target
 
 [Service]
@@ -9,8 +9,17 @@ Group=ollama
 Restart=always
 RestartSec=3
 
-Environment="OLLAMA_HOST=127.0.0.1:11434"
+# Enable Vulkan backend for Intel Arc GPU
 Environment="OLLAMA_VULKAN=1"
+
+# Use all available GPU layers, auto-split to CPU if model too large
+Environment="OLLAMA_NUM_GPU=999"
+
+# Run on different port so both services can run simultaneously
+Environment="OLLAMA_HOST=127.0.0.1:11435"
+
+# Keep models loaded indefinitely (avoid reload delays)
+Environment="OLLAMA_KEEP_ALIVE=-1"
 
 [Install]
 WantedBy=default.target
