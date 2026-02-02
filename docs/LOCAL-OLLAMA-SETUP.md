@@ -10,9 +10,11 @@ This documents the Ollama setup on a local home server with Intel Arc GPU.
 /etc/systemd/system/
 ├── ollama-cpu.service      # CPU only, port 11434 (default)
 ├── ollama-vulkan.service   # Vulkan GPU (Intel Arc), port 11435
-├── ollama-ipex.service     # IPEX-LLM GPU (legacy, port 11434)
 ├── ollama.service          # Original stock Ollama (preserved as baseline)
+└── ollama-ipex.service     # (optional) IPEX-LLM GPU, copy from .legacy file
 ```
+
+*Note: The IPEX service file is provided as `ollama-ipex.service.legacy` in this repo. Rename to `.service` when installing if needed.*
 
 **Port assignments:**
 - `localhost:11434` — CPU service (reliable, works with all model sizes)
@@ -52,11 +54,12 @@ OLLAMA_HOST=localhost:11434 ollama run ...
 # Use Vulkan GPU service (port 11435)
 OLLAMA_HOST=localhost:11435 ollama run llama3.1:latest "Hello"
 
-# Claude Code with CPU (default)
+# Claude Code with CPU (recommended - reliable)
 ANTHROPIC_BASE_URL=http://localhost:11434 claude --model llama3.1
 
-# Claude Code with GPU
-ANTHROPIC_BASE_URL=http://localhost:11435 claude --model llama3.1
+# Claude Code with GPU via shim (see Claude Code Integration section below)
+# Direct Vulkan (11435) crashes with Anthropic API - must use shim on port 4001
+ANTHROPIC_BASE_URL=http://localhost:4001 claude --model llama3.1
 ```
 
 ### Legacy: Single Service Mode
@@ -115,7 +118,7 @@ Service files are in `docs/` directory:
 |------|------|-------------|
 | [`ollama-cpu.service`](ollama-cpu.service) | 11434 | CPU only, stock Ollama 0.15+ |
 | [`ollama-vulkan.service`](ollama-vulkan.service) | 11435 | Vulkan GPU (Intel Arc), stock Ollama 0.15+ |
-| [`ollama-ipex.service`](ollama-ipex.service) | 11434 | IPEX-LLM GPU (legacy, older Ollama) |
+| [`ollama-ipex.service.legacy`](ollama-ipex.service.legacy) | 11434 | IPEX-LLM GPU (legacy, rename to `.service` to use) |
 
 ## Model Compatibility
 
@@ -331,20 +334,31 @@ Slower but reliable. Recommended for most use cases.
 The [ollama-anthropic-shim](https://github.com/hilyin/ollama-anthropic-shim) translates Anthropic API → Ollama native API, bypassing the crash.
 
 ```bash
-# Install and run shim (Docker with host networking)
+# Clone and build the shim
 cd /tmp && git clone https://github.com/hilyin/ollama-anthropic-shim.git
 cd ollama-anthropic-shim
+
+# Option A: Use their script (builds and runs via docker-compose)
+echo 'OLLAMA_BASE_URL=http://127.0.0.1:11435' > .env
+echo 'OLLAMA_MODEL=llama3.1:latest' >> .env
+echo 'SHIM_PORT=4001' >> .env
+./up.sh  # Note: uses docker-compose, may need network adjustments on Linux
+
+# Option B: Build and run manually with host networking
+docker build -t ollama-shim:local .
 docker run -d --name ollama-shim --network=host \
   -e OLLAMA_BASE_URL=http://127.0.0.1:11435 \
   -e OLLAMA_MODEL=llama3.1:latest \
   -e SHIM_PORT=4001 \
-  ollama-anthropic-shim-shim:latest
+  ollama-shim:local
 
 # Use Claude Code through shim → GPU
 export ANTHROPIC_AUTH_TOKEN=ollama
 export ANTHROPIC_BASE_URL=http://localhost:4001
 claude --model llama3.1:latest -p "Hello"
 ```
+
+**Security note**: `--network=host` exposes the shim on all interfaces. Since Ollama binds to 127.0.0.1, this is needed for the container to reach it. Ensure your firewall blocks external access to port 4001 if needed.
 
 **Note**: First request is slow (~80s) due to Claude Code's large system prompt (~18KB). Subsequent requests are faster.
 
