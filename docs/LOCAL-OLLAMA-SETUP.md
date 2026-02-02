@@ -4,47 +4,76 @@ This documents the Ollama setup on a local home server with Intel Arc GPU.
 
 ## Service Architecture
 
-Four systemd services available, only one active at a time (all bind to port 11434):
+**Recommended: Run both services simultaneously** on different ports:
 
 ```
 /etc/systemd/system/
+├── ollama-cpu.service      # CPU only, port 11434 (default)
+├── ollama-vulkan.service   # Vulkan GPU (Intel Arc), port 11435
 ├── ollama.service          # Original stock Ollama (preserved as baseline)
-├── ollama-cpu.service      # CPU only (default - works with all models)
-├── ollama-ipex.service     # IPEX-LLM GPU (fast, but only for models ≤16GB)
-├── ollama-vulkan.service   # Vulkan GPU (fallback)
+└── ollama-ipex.service     # (optional) IPEX-LLM GPU, copy from .legacy file
 ```
 
-OpenWebUI connects to `localhost:11434` and works with whichever service is active.
+*Note: The IPEX service file is provided as `ollama-ipex.service.legacy` in this repo. Rename to `.service` when installing if needed.*
+
+**Port assignments:**
+- `localhost:11434` — CPU service (reliable, works with all model sizes)
+- `localhost:11435` — Vulkan GPU service (fast, auto-splits large models)
 
 **Note:** Services bind to `127.0.0.1` (localhost only) by default for security. See [Network Access](#network-access) if you need remote access.
 
 ## Quick Reference
 
-| Service | Best For | Use When |
-|---------|----------|----------|
-| `ollama-cpu` | All models | **Default** - works with everything, slower |
-| `ollama-ipex` | Models ≤16GB | Want GPU speed, using smaller models |
-| `ollama-vulkan` | Models ≤16GB | IPEX has issues, need GPU fallback |
-| `ollama` | Baseline | Original config, troubleshooting |
+| Service | Port | Best For | Notes |
+|---------|------|----------|-------|
+| `ollama-cpu` | 11434 | Large models (70B), baseline | Slower but reliable |
+| `ollama-vulkan` | 11435 | Small/medium models | Fast GPU, auto-splits if needed |
+| `ollama-ipex` | 11434 | Legacy IPEX setup | Older Ollama version, no Claude Code support |
 
-### Switching Services
+### Recommended Setup (Both Services)
 
 ```bash
-# Switch to CPU (default - works with all models)
-sudo systemctl disable --now ollama ollama-ipex ollama-vulkan
+# Enable both services to run simultaneously
+sudo systemctl enable --now ollama-cpu ollama-vulkan
+
+# Verify both are running
+systemctl is-active ollama-cpu ollama-vulkan
+
+# Test each endpoint
+curl http://localhost:11434/api/tags  # CPU
+curl http://localhost:11435/api/tags  # GPU
+```
+
+### Using Each Service
+
+```bash
+# Use CPU service (port 11434 - default)
+ollama run llama3.3:70b-instruct-q6_K "Hello"
+OLLAMA_HOST=localhost:11434 ollama run ...
+
+# Use Vulkan GPU service (port 11435)
+OLLAMA_HOST=localhost:11435 ollama run llama3.1:latest "Hello"
+
+# Claude Code with CPU (recommended - reliable)
+ANTHROPIC_BASE_URL=http://localhost:11434 claude --model llama3.1
+
+# Claude Code with GPU via shim (see Claude Code Integration section below)
+# Direct Vulkan (11435) crashes with Anthropic API - must use shim on port 4001
+ANTHROPIC_BASE_URL=http://localhost:4001 claude --model llama3.1
+```
+
+### Legacy: Single Service Mode
+
+If you prefer only one service at a time (old behavior):
+
+```bash
+# Switch to CPU only
+sudo systemctl disable --now ollama-vulkan ollama-ipex
 sudo systemctl enable --now ollama-cpu
 
-# Switch to IPEX (GPU, for small models only)
-sudo systemctl disable --now ollama ollama-cpu ollama-vulkan
-sudo systemctl enable --now ollama-ipex
-
-# Switch to Vulkan (GPU fallback)
-sudo systemctl disable --now ollama ollama-cpu ollama-ipex
+# Switch to Vulkan GPU only (change port to 11434 in service file first)
+sudo systemctl disable --now ollama-cpu ollama-ipex
 sudo systemctl enable --now ollama-vulkan
-
-# Switch to original stock Ollama
-sudo systemctl disable --now ollama-cpu ollama-ipex ollama-vulkan
-sudo systemctl enable --now ollama
 
 # Check which is active
 systemctl is-active ollama ollama-cpu ollama-ipex ollama-vulkan
@@ -52,49 +81,60 @@ systemctl is-active ollama ollama-cpu ollama-ipex ollama-vulkan
 
 ## Recommendations
 
-**Default:** Use `ollama-cpu` - it works with all models and won't fail unexpectedly.
+**Best setup:** Run both `ollama-cpu` and `ollama-vulkan` simultaneously.
 
-**For performance:** Switch to `ollama-ipex` when you know you'll be using smaller models (≤16GB) and want GPU acceleration.
-
-| Model Size | Recommended Service | Why |
-|------------|---------------------|-----|
-| Any / Mixed | `ollama-cpu` | Safe default, works with everything |
-| ≤16GB only | `ollama-ipex` | GPU acceleration, ~2x faster |
-| >16GB (70b) | `ollama-cpu` | Only option that works |
+| Model Size | Recommended Port | Why |
+|------------|------------------|-----|
+| ≤16GB (7B-13B) | 11435 (Vulkan) | Full GPU acceleration |
+| 16-48GB (30B-70B) | 11435 (Vulkan) | Auto-splits GPU+CPU |
+| >48GB or reliability needed | 11434 (CPU) | Pure CPU, always works |
 
 ### Performance (llama3.1:latest 4.7GB)
 
 | Backend | Prompt Eval | Generation |
 |---------|-------------|------------|
 | IPEX GPU | 147.6 tok/s | 39.0 tok/s |
+| Vulkan GPU | TBD | TBD |
 | CPU | 47.6 tok/s | 18.1 tok/s |
 
-IPEX provides ~2x faster generation and ~3x faster prompt processing.
+*Note: Vulkan benchmarks pending. IPEX has better performance than Vulkan for Intel Arc but requires older Ollama version without Claude Code support.*
+
+### Model Size Behavior (Vulkan)
+
+Ollama 0.15+ with Vulkan automatically handles models larger than VRAM:
+1. **Fits in VRAM** → 100% GPU (fastest)
+2. **Partially fits** → Splits layers between GPU and CPU (slower but works)
+3. **Single layer too large** → Falls back to CPU only
 
 **Workflow:**
-1. Keep `ollama-cpu` as the default (works with everything)
-2. Switch to `ollama-ipex` when doing intensive work with smaller models
-3. Switch back to `ollama-cpu` when done or when you need 70b models
+1. Use port 11435 (Vulkan GPU) for most work — fast for small models, auto-splits large ones
+2. Use port 11434 (CPU) when you need guaranteed reliability or GPU is busy
 
 ## Service Files
 
 Service files are in `docs/` directory:
 
-| File | Description |
-|------|-------------|
-| [`ollama-cpu.service`](ollama-cpu.service) | CPU only (default) - uses stock Ollama binary |
-| [`ollama-ipex.service`](ollama-ipex.service) | IPEX-LLM GPU via SYCL/Level Zero |
-| [`ollama-vulkan.service`](ollama-vulkan.service) | Vulkan GPU backend |
+| File | Port | Description |
+|------|------|-------------|
+| [`ollama-cpu.service`](ollama-cpu.service) | 11434 | CPU only, stock Ollama 0.15+ |
+| [`ollama-vulkan.service`](ollama-vulkan.service) | 11435 | Vulkan GPU (Intel Arc), stock Ollama 0.15+ |
+| [`ollama-ipex.service.legacy`](ollama-ipex.service.legacy) | 11434 | IPEX-LLM GPU (legacy, rename to `.service` to use) |
 
 ## Model Compatibility
 
-| Model | Size | IPEX | CPU | Vulkan | Notes |
-|-------|------|------|-----|--------|-------|
-| llama3.1:latest | 4.7GB | ✅ Fast | ✅ Slow | ✅ Fast | Fits in VRAM |
-| llama3.1:8b | 8.5GB | ✅ Fast | ✅ Slow | ✅ Fast | Fits in VRAM |
-| llama2-uncensored | 3.8GB | ✅ Fast | ✅ Slow | ✅ Fast | Fits in VRAM |
-| deepseek-r1:70b | 42GB | ❌ | ✅ Slow | ⚠️ Garbled | Use CPU |
-| llama3.3:70b | 57GB | ❌ | ✅ Slow | ❌ OOM | Use CPU |
+| Model | Size | Vulkan (11435) | CPU (11434) | Notes |
+|-------|------|----------------|-------------|-------|
+| llama3.1:latest | 4.7GB | ✅ Full GPU | ✅ Works | Fits in VRAM |
+| qwen2.5-coder:7b | 4.7GB | ✅ Full GPU | ✅ Works | Fits in VRAM |
+| llama3.1:8b-q8 | 8.5GB | ✅ Full GPU | ✅ Works | Fits in VRAM |
+| llama2-uncensored | 3.8GB | ✅ Full GPU | ✅ Works | Fits in VRAM |
+| deepseek-r1:70b | 42GB | ⚠️ GPU+CPU split | ✅ Works | Auto-splits, slower |
+| llama3.3:70b | 57GB | ⚠️ GPU+CPU split | ✅ Works | Auto-splits, slower |
+
+**Legend:**
+- ✅ Full GPU = Entire model in VRAM, fastest
+- ⚠️ GPU+CPU split = Partial offload, works but slower (5-30x slower than full GPU)
+- ✅ Works = Reliable but CPU-speed
 
 ## Initial Setup
 
@@ -232,17 +272,116 @@ sudo chown -R ollama:ollama /opt/ipex-llm
 
 ## Known Limitations
 
-1. **No CPU+GPU split**: Neither IPEX nor Vulkan reliably supports partial offloading on Intel Arc
-2. **Manual switching required**: Must switch services for different model sizes (see [Issue #1](https://github.com/amc-corey-cox/cc_forge/issues/1) for future proxy solution)
-3. **Vulkan corruption**: Vulkan backend produces garbled output when splitting large models
+1. **Anthropic API + Vulkan crash**: Ollama's `/v1/messages` endpoint crashes with Vulkan backend ([Issue #13949](https://github.com/ollama/ollama/issues/13949)). Use CPU or shim workaround.
+2. **Claude Code large context**: Claude Code sends ~18KB system prompts. Local models process this slowly (60-90s first request).
+3. **Vulkan slower than IPEX**: Vulkan backend is slower than IPEX-LLM, but IPEX is stuck on older Ollama without Anthropic API support.
+4. **Partial offload performance**: When models split between GPU+CPU, performance drops 5-30x vs full GPU.
+5. **SYCL support pending**: Native SYCL/oneAPI support for Intel Arc is [in PR #11160](https://github.com/ollama/ollama/pull/11160), not yet merged.
 
 ## Files and Locations
 
 | Path | Purpose |
 |------|---------|
-| `/etc/systemd/system/ollama.service` | Original stock Ollama (preserved) |
-| `/etc/systemd/system/ollama-cpu.service` | CPU-only service (default) |
-| `/etc/systemd/system/ollama-ipex.service` | IPEX GPU service |
-| `/etc/systemd/system/ollama-vulkan.service` | Vulkan GPU service |
-| `/opt/ipex-llm/` | IPEX-LLM installation |
-| `/usr/share/ollama/.ollama/models/` | Downloaded models (ollama user) |
+| `/etc/systemd/system/ollama-cpu.service` | CPU service, port 11434 |
+| `/etc/systemd/system/ollama-vulkan.service` | Vulkan GPU service, port 11435 |
+| `/etc/systemd/system/ollama.service` | Original stock Ollama (preserved as baseline) |
+| `/usr/local/bin/ollama` | Stock Ollama binary (0.15+) |
+| `/usr/share/ollama/.ollama/models/` | Downloaded models (shared by all services) |
+
+## Cleanup (Optional)
+
+Legacy IPEX-LLM files can be removed to save ~450MB:
+
+```bash
+# Remove old IPEX service (if not using)
+sudo systemctl disable ollama-ipex
+sudo rm /etc/systemd/system/ollama-ipex.service
+
+# Remove IPEX-LLM installation (saves ~450MB)
+sudo rm -rf /opt/ipex-llm/
+
+# Reload systemd
+sudo systemctl daemon-reload
+```
+
+**Note**: Only remove IPEX if you're using Vulkan (stock Ollama 0.15+) for GPU acceleration. IPEX provides better performance but lacks Anthropic API support.
+
+## Claude Code Integration
+
+Ollama 0.15+ supports the Anthropic Messages API, enabling Claude Code with local models.
+
+### Known Issue: Vulkan + Anthropic API
+
+**Bug**: Ollama's Anthropic API (`/v1/messages`) crashes when used with Vulkan GPU backend. See [Issue #13949](https://github.com/ollama/ollama/issues/13949).
+
+| Backend | Direct Ollama API | Anthropic API (Claude Code) |
+|---------|-------------------|----------------------------|
+| CPU (11434) | ✅ Works | ✅ Works |
+| Vulkan GPU (11435) | ✅ Works | ❌ Crashes |
+
+### Option 1: Use CPU Service (Simple)
+
+```bash
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_BASE_URL=http://localhost:11434
+claude --model llama3.1:latest -p "Hello"
+```
+
+Slower but reliable. Recommended for most use cases.
+
+### Option 2: Use Shim for GPU (Advanced)
+
+The [ollama-anthropic-shim](https://github.com/hilyin/ollama-anthropic-shim) translates Anthropic API → Ollama native API, bypassing the crash.
+
+```bash
+# Clone and build the shim
+cd /tmp && git clone https://github.com/hilyin/ollama-anthropic-shim.git
+cd ollama-anthropic-shim
+
+# Option A: Use their script (builds and runs via docker-compose)
+echo 'OLLAMA_BASE_URL=http://127.0.0.1:11435' > .env
+echo 'OLLAMA_MODEL=llama3.1:latest' >> .env
+echo 'SHIM_PORT=4001' >> .env
+./up.sh  # Note: uses docker-compose, may need network adjustments on Linux
+
+# Option B: Build and run manually with host networking
+docker build -t ollama-shim:local .
+docker run -d --name ollama-shim --network=host \
+  -e OLLAMA_BASE_URL=http://127.0.0.1:11435 \
+  -e OLLAMA_MODEL=llama3.1:latest \
+  -e SHIM_PORT=4001 \
+  ollama-shim:local
+
+# Use Claude Code through shim → GPU
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_BASE_URL=http://localhost:4001
+claude --model llama3.1:latest -p "Hello"
+```
+
+**Security note**: `--network=host` exposes the shim on all interfaces. Since Ollama binds to 127.0.0.1, this is needed for the container to reach it. Ensure your firewall blocks external access to port 4001 if needed.
+
+**Note**: First request is slow (~80s) due to Claude Code's large system prompt (~18KB). Subsequent requests are faster.
+
+### Performance Expectations
+
+Claude Code sends massive system prompts (tool definitions, context). Local 7B models struggle with this:
+- **First request**: 60-90 seconds (processing system prompt)
+- **Subsequent**: Faster if model stays loaded
+- **Quality**: Much weaker than cloud Claude - good for simple tasks only
+
+For complex coding tasks, consider Aider (designed for local models) or cloud Claude.
+
+### Quick Reference
+
+```bash
+# CPU service (simple, reliable)
+export ANTHROPIC_BASE_URL=http://localhost:11434
+
+# GPU via shim (faster inference, complex setup)
+export ANTHROPIC_BASE_URL=http://localhost:4001
+
+# Run Claude Code
+claude --model qwen2.5-coder:7b-instruct-q4_K_M -p "Hello"
+```
+
+See [AGENT-FRAMEWORK-EVALUATION.md](AGENT-FRAMEWORK-EVALUATION.md) for more details.
