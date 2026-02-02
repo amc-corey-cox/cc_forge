@@ -135,18 +135,84 @@ Based on cc_forge's requirements (see DESIGN.md):
 
 ---
 
+### OpenClaw (formerly Clawdbot/Moltbot)
+
+**Overview**: Open-source autonomous personal AI assistant that went viral in early 2026. 100k+ GitHub stars. Runs locally and executes real actions via messaging apps.
+
+**Ollama Support**: Yes, but demanding
+- Native integration with auto-discovery of tool-capable models
+- Set `OLLAMA_API_KEY="ollama-local"` in OpenClaw config (this is an OpenClaw convention; Ollama itself requires no API key)
+- **Requires 48GB+ VRAM** for reliable operation — 72B models work best
+- Smaller models (7B-13B) struggle with OpenClaw's complex system prompts
+
+**Key Strengths**:
+- **General-Purpose Agent**: Not just coding — handles any automation task
+- **Messaging Integration**: Lives in WhatsApp, Telegram, Discord, iMessage
+- **Dispatcher Architecture**: Can invoke other coding tools (Claude Code, Aider, Cursor)
+- **Self-Improving**: Can write new skills to extend itself
+- **Model-Agnostic**: Works with any provider (OpenAI, Anthropic, Ollama, etc.)
+
+**Limitations**:
+- **High VRAM requirements** for local-only operation
+- Security is "an option, not built in" — documentation warns shell access is "spicy"
+- Complex setup compared to simpler tools
+- More infrastructure than coding assistant
+
+**cc_forge Fit**: Promising for long-term multi-agent vision (Phase 8+). The dispatcher architecture aligns with Dev/Test/Red/Blue team concept. Overkill for MVP — adds complexity without clear benefit for Phase 1-3.
+
+**Links**: [Website](https://openclaw.ai) | [Docs](https://docs.openclaw.ai) | [GitHub](https://github.com/openclaw/openclaw) | [Ollama Config](https://docs.openclaw.ai/providers/ollama)
+
+---
+
+### Claude Code + Ollama (EXPERIMENTAL)
+
+**Overview**: Anthropic's Claude Code CLI can now connect to local Ollama models via Ollama's new Anthropic Messages API compatibility layer.
+
+**Ollama Support**: Experimental
+- Ollama added Anthropic API compatibility in early 2026
+- Configure via environment variables pointing to local Ollama endpoint
+- Same Claude Code interface, but with local model execution
+
+**Setup**:
+```bash
+# Both variables required: AUTH_TOKEN identifies the backend, API_KEY must be empty
+export ANTHROPIC_AUTH_TOKEN="ollama"
+export ANTHROPIC_API_KEY=""
+export ANTHROPIC_BASE_URL="http://localhost:11434"
+claude --model <ollama-model-name>
+```
+
+**Key Strengths**:
+- **Familiar Interface**: Same Claude Code experience used with cloud models
+- **No Subscription**: Local execution eliminates API costs
+- **Existing Workflow**: No new tool to learn
+- **Full Claude Code Features**: All tools, MCP support, git integration
+
+**Limitations**:
+- **Experimental**: New feature, may have rough edges
+- **Model Quality**: Local models won't match Claude Opus/Sonnet capabilities
+- **Untested**: Needs hands-on validation with our hardware
+- Article notes you "lose the capabilities of Anthropic's very top models"
+
+**cc_forge Fit**: **Potentially game-changing** if it works reliably. Would allow using Claude Code (the tool we're already using) with local models — best of both worlds. High priority to test.
+
+**Links**: [Towards Data Science Guide](https://towardsdatascience.com/run-claude-code-for-free-with-local-and-cloud-models-from-ollama/)
+
+---
+
 ## Comparison Matrix
 
-| Feature | Goose | Aider | Continue | Cline |
-|---------|-------|-------|----------|-------|
-| **Ollama Support** | Excellent | Excellent | Good | Good |
-| **MCP/Extensibility** | Excellent | None | Limited | Good |
-| **Git Integration** | Basic | Excellent | Good | Good |
-| **Terminal-First** | Yes | Yes | No | No |
-| **Local-First** | Yes | Yes | Yes | Yes |
-| **Agent Autonomy** | Full | Full | Full | Full |
-| **Maturity** | High | High | High | High |
-| **GitHub Stars** | 29k+ | 25k+ | 20k+ | 15k+ |
+| Feature | Goose | Aider | Continue | Cline | OpenClaw | Claude Code + Ollama |
+|---------|-------|-------|----------|-------|----------|-------------------|
+| **Ollama Support** | Excellent | Excellent | Good | Good | Yes (48GB+) | Experimental |
+| **MCP/Extensibility** | Excellent | None | Limited | Good | Excellent | Full |
+| **Git Integration** | Basic | Excellent | Good | Good | Via skills | Excellent |
+| **Terminal-First** | Yes | Yes | No | No | No (messaging) | Yes |
+| **Local-First** | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Agent Autonomy** | Full | Full | Full | Full | Full | Full |
+| **Maturity** | High | High | High | High | Medium | Experimental |
+| **Min Local VRAM** | 8GB | 8GB | 8GB | 8GB | 48GB | Unknown |
+| **GitHub Stars** | 29k+ | 25k+ | 20k+ | 15k+ | 100k+ | N/A |
 
 ---
 
@@ -238,6 +304,8 @@ Goose's MCP architecture remains compelling for the long-term multi-agent vision
 
 ### Future Considerations
 
+- **Claude Code + Ollama**: **HIGH PRIORITY** — Test immediately. If it works, this becomes the primary recommendation (familiar interface + local models).
+- **OpenClaw**: Consider for Phase 8+ (multi-agent orchestration). Dispatcher architecture fits the Dev/Test/Red/Blue team vision, but overkill for MVP.
 - **Cline**: Consider for Phase 6 (IDE Integration) due to MCP support and VS Code presence.
 - **SERA**: Watch for Ollama/GGUF support — good performance if hardware requirements drop.
 
@@ -282,9 +350,11 @@ See deployment guides for hardware-specific model details:
 - [Aider GitHub](https://github.com/paul-gauthier/aider)
 - [Continue.dev](https://continue.dev)
 - [Cline](https://cline.bot)
+- [OpenClaw](https://openclaw.ai) | [Docs](https://docs.openclaw.ai) | [GitHub](https://github.com/openclaw/openclaw)
+- [Claude Code + Ollama Guide](https://towardsdatascience.com/run-claude-code-for-free-with-local-and-cloud-models-from-ollama/)
 - [Ollama Integrations](https://docs.ollama.com/integrations)
 - [MCP Specification](https://modelcontextprotocol.io)
 
 ---
 
-*Last updated: 2026-01-29 — Updated with hands-on testing results*
+*Last updated: 2026-01-30 — Added OpenClaw and Claude Code + Ollama evaluations*
