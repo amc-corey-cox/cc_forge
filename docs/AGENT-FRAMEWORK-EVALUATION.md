@@ -141,7 +141,7 @@ Based on cc_forge's requirements (see DESIGN.md):
 
 **Ollama Support**: Yes, but demanding
 - Native integration with auto-discovery of tool-capable models
-- Set `OLLAMA_API_KEY="ollama-local"` for automatic configuration
+- Set `OLLAMA_API_KEY="ollama-local"` in OpenClaw config (this is an OpenClaw convention; Ollama itself requires no API key)
 - **Requires 48GB+ VRAM** for reliable operation — 72B models work best
 - Smaller models (7B-13B) struggle with OpenClaw's complex system prompts
 
@@ -175,6 +175,7 @@ Based on cc_forge's requirements (see DESIGN.md):
 
 **Setup**:
 ```bash
+# Both variables required: AUTH_TOKEN identifies the backend, API_KEY must be empty
 export ANTHROPIC_AUTH_TOKEN="ollama"
 export ANTHROPIC_API_KEY=""
 export ANTHROPIC_BASE_URL="http://localhost:11434"
@@ -201,7 +202,7 @@ claude --model <ollama-model-name>
 
 ## Comparison Matrix
 
-| Feature | Goose | Aider | Continue | Cline | OpenClaw | Claude Code+Ollama |
+| Feature | Goose | Aider | Continue | Cline | OpenClaw | Claude Code + Ollama |
 |---------|-------|-------|----------|-------|----------|-------------------|
 | **Ollama Support** | Excellent | Excellent | Good | Good | Yes (48GB+) | Experimental |
 | **MCP/Extensibility** | Excellent | None | Limited | Good | Excellent | Full |
