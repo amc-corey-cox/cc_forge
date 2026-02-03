@@ -51,27 +51,34 @@ Phases 1-3 focus on building a useful local alternative to cloud-based AI coding
 **Goal**: Choose and configure an agent framework for local use.
 
 ### Goose Evaluation
-- [ ] Install Goose locally
-- [ ] Configure to use local Ollama endpoint
-- [ ] Test basic coding tasks (file creation, editing, git)
-- [ ] Evaluate MCP (Model Context Protocol) support
-- [ ] Document limitations with local models
+- [x] Install Goose locally
+- [x] Configure to use local Ollama endpoint
+- [x] Test basic coding tasks (file creation, editing, git)
+- [x] Evaluate MCP (Model Context Protocol) support
+- [x] Document limitations with local models
 
 ### Aider Evaluation
-- [ ] Install Aider locally
-- [ ] Configure to use local Ollama endpoint
-- [ ] Test basic coding tasks
+- [x] Install Aider locally
+- [x] Configure to use local Ollama endpoint
+- [x] Test basic coding tasks
 - [ ] Evaluate git integration
-- [ ] Document limitations with local models
+- [x] Document limitations with local models
+
+### Claude Code + Ollama Evaluation
+- [x] Upgrade Ollama to 0.15+ for Anthropic API compatibility
+- [x] Test Claude Code with CPU service
+- [x] Test Claude Code with GPU service (discovered crash bug)
+- [x] Implement shim workaround for GPU acceleration
+- [x] Document setup and limitations
 
 ### Comparison
 - [x] Document pros/cons of each for our use case
 - [x] Make initial framework selection
-- [ ] Identify gaps that may need custom work
+- [x] Identify gaps that may need custom work
 
 ### Deliverables
 - [x] `docs/AGENT-FRAMEWORK-EVALUATION.md` — Comparison and recommendation
-- [ ] Working agent setup with local Ollama
+- [x] Working agent setup with local Ollama
 
 ---
 
@@ -433,6 +440,8 @@ Ideas for post-v1 development, once the core system is mature:
 | 2026-01-29 | Aider over Goose for MVP | Goose tool-calling fails with local models; Aider's diff-based approach works |
 | 2026-01-29 | SERA not suitable | Requires 80GB VRAM (A100/H100), no Ollama/GGUF support |
 | 2026-01-29 | pipx for Python CLI tools | System-wide isolated installs without polluting pyenv/system Python |
+| 2026-02-02 | Claude Code + Ollama works with shim | Ollama's Anthropic API crashes with Vulkan; shim translates to native API |
+| 2026-02-02 | Dual-service Ollama architecture | CPU (11434) + Vulkan GPU (11435) can run simultaneously |
 
 ---
 
@@ -446,4 +455,4 @@ Ideas for post-v1 development, once the core system is mature:
 
 ---
 
-*Last updated: 2025-01-27 — Restructured for local coding assistant MVP*
+*Last updated: 2026-02-03 — Updated Phase 2 with Claude Code + Ollama testing results*
