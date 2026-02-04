@@ -166,10 +166,10 @@ Based on cc_forge's requirements (see DESIGN.md):
 
 ### Claude Code + Ollama (TESTED)
 
-**Overview**: Anthropic's Claude Code CLI can connect to local Ollama models via Ollama's Anthropic Messages API compatibility layer (added in Ollama 0.14+).
+**Overview**: Anthropic's Claude Code CLI can connect to local Ollama models via Ollama's Anthropic Messages API compatibility layer (added in Ollama 0.15+).
 
 **Ollama Support**: Works with caveats
-- Requires Ollama 0.14+ for Anthropic API compatibility
+- Requires Ollama 0.15+ for Anthropic API compatibility
 - Configure via environment variables pointing to local Ollama endpoint
 - Same Claude Code interface, but with local model execution
 
@@ -191,12 +191,8 @@ ANTHROPIC_BASE_URL=http://localhost:4001 claude --model llama3.1
 **Limitations**:
 - **Large System Prompt**: Claude Code sends ~18KB system prompts, causing slow first requests (60-90s) and sometimes confusing smaller models
 - **Model Quality**: Local models won't match Claude Opus/Sonnet capabilities
-- **Vulkan GPU Bug**: Ollama's Anthropic API (`/v1/messages`) crashes with Vulkan backend — requires shim workaround (see `LOCAL-OLLAMA-SETUP.md`)
+- **Vulkan GPU Bug**: Ollama's Anthropic API (`/v1/messages`) crashes with Vulkan backend — use [ollama-anthropic-shim](https://github.com/hilyin/ollama-anthropic-shim) as workaround (see `LOCAL-OLLAMA-SETUP.md`)
 - Article notes you "lose the capabilities of Anthropic's very top models"
-
-**Known Issues**:
-- **Anthropic API + Vulkan = Crash**: Direct connection to Vulkan GPU service crashes. Use [ollama-anthropic-shim](https://github.com/hilyin/ollama-anthropic-shim) to translate Anthropic API → native Ollama API
-- **Slow First Request**: Claude Code's large system prompt takes 60-90s on first request with local models
 
 **cc_forge Fit**: **Works but has rough edges.** Familiar interface is a major benefit. Best for users already comfortable with Claude Code who want to experiment with local models. For pure local-first work, Aider may still be more practical due to smaller prompts and diff-based approach.
 
@@ -216,9 +212,9 @@ ANTHROPIC_BASE_URL=http://localhost:4001 claude --model llama3.1
 | **Agent Autonomy** | Full | Full | Full | Full | Full | Full |
 | **Maturity** | High | High | High | High | Medium | Tested |
 | **Min Local VRAM** | 8GB | 8GB | 8GB | 8GB | 48GB | 8GB |
+| **GitHub Stars** | 29k+ | 25k+ | 20k+ | 15k+ | 100k+ | N/A |
 
 *\* Claude Code + Ollama works but requires shim for GPU acceleration due to Anthropic API bug with Vulkan backend*
-| **GitHub Stars** | 29k+ | 25k+ | 20k+ | 15k+ | 100k+ | N/A |
 
 ---
 
