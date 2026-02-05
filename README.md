@@ -35,7 +35,7 @@ Run Claude Code using local Ollama models instead of cloud APIs.
 ### Prerequisites
 
 - Ollama 0.15+ running on your server (see [LOCAL-OLLAMA-SETUP.md](docs/LOCAL-OLLAMA-SETUP.md))
-- Claude Code installed (`npm install -g @anthropic-ai/claude-code`)
+- Claude Code CLI installed (see [Anthropic's documentation](https://docs.anthropic.com/en/docs/claude-code))
 - A model pulled: `ollama pull llama3.1`
 
 ### Running on the Server
