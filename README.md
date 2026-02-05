@@ -36,7 +36,7 @@ Run Claude Code using local Ollama models instead of cloud APIs.
 
 - Ollama 0.15+ running on your server (see [LOCAL-OLLAMA-SETUP.md](docs/LOCAL-OLLAMA-SETUP.md))
 - Claude Code installed (`npm install -g @anthropic-ai/claude-code`)
-- A model pulled: `ollama pull llama3.1:latest`
+- A model pulled: `ollama pull llama3.1`
 
 ### Option 1: SSH to Server (Recommended)
 
@@ -49,34 +49,40 @@ ssh myserver
 # Set environment and run
 export ANTHROPIC_AUTH_TOKEN=ollama
 export ANTHROPIC_BASE_URL=http://localhost:11434
-claude --model llama3.1:latest
+claude --model llama3.1
 ```
 
 For GPU acceleration (requires [shim setup](docs/LOCAL-OLLAMA-SETUP.md#option-2-use-shim-for-gpu-advanced)):
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:4001
-claude --model llama3.1:latest
+claude --model llama3.1
 ```
+
+**Security note:** The GPU shim runs with host networking. Restrict inbound access to port 4001 via your firewall or use SSH port-forwarding for remote access.
 
 ### Option 2: Remote Access (Advanced)
 
-To run Claude Code from a different machine, you need to expose Ollama to the network.
+**Security warning:** Ollama's HTTP API is unauthenticated. Never expose port 11434 to the internet. Prefer SSH tunneling or a VPN, and only allow access from trusted machines.
 
-**On the server** - edit the service file to bind to all interfaces:
+**On the server** - create a systemd override to bind to all interfaces:
 ```bash
-# Change OLLAMA_HOST from 127.0.0.1 to 0.0.0.0
-sudo sed -i 's/127.0.0.1:11434/0.0.0.0:11434/' /etc/systemd/system/ollama-cpu.service
-sudo systemctl daemon-reload && sudo systemctl restart ollama-cpu
+# Create a drop-in override
+sudo systemctl edit ollama-cpu
+# Add these lines in the editor:
+#   [Service]
+#   Environment="OLLAMA_HOST=0.0.0.0:11434"
 
-# Configure firewall (replace with your subnet)
-sudo ufw allow from 192.168.0.0/16 to any port 11434
+sudo systemctl restart ollama-cpu
+
+# Configure firewall (replace with your trusted subnet)
+sudo ufw allow from 192.168.1.0/24 to any port 11434
 ```
 
 **On your local machine**:
 ```bash
 export ANTHROPIC_AUTH_TOKEN=ollama
 export ANTHROPIC_BASE_URL=http://myserver:11434
-claude --model llama3.1:latest
+claude --model llama3.1
 ```
 
 ### What to Expect
@@ -97,7 +103,7 @@ curl http://localhost:11434/api/tags
 ollama list
 
 # Test basic inference
-ollama run llama3.1:latest "Hello"
+ollama run llama3.1 "Hello"
 ```
 
 See [docs/LOCAL-OLLAMA-SETUP.md](docs/LOCAL-OLLAMA-SETUP.md) for detailed configuration.
