@@ -38,12 +38,12 @@ Run Claude Code using local Ollama models instead of cloud APIs.
 - Claude Code installed (`npm install -g @anthropic-ai/claude-code`)
 - A model pulled: `ollama pull llama3.1`
 
-### Option 1: SSH to Server (Recommended)
+### Running on the Server
 
-SSH into your Ollama server and run Claude Code there:
+Run Claude Code directly on your Ollama server (via SSH or local terminal - no difference):
 
 ```bash
-# SSH to your server
+# If remote, SSH to your server first
 ssh myserver
 
 # Set environment and run
@@ -58,29 +58,13 @@ export ANTHROPIC_BASE_URL=http://localhost:4001
 claude --model llama3.1
 ```
 
-**Security note:** The GPU shim runs with host networking. Restrict inbound access to port 4001 via your firewall or use SSH port-forwarding for remote access.
+**Note:** Whether you SSH in or use a local terminal, the commands are identical - Claude Code connects to Ollama on localhost either way.
 
-### Option 2: Remote Access (Advanced)
+### Remote Access (Coming Soon)
 
-**Security warning:** Ollama's HTTP API is unauthenticated. Never expose port 11434 to the internet. Prefer SSH tunneling or a VPN, and only allow access from trusted machines.
+Secure remote access via Tailscale is planned for Phase 7. This will allow running Claude Code from any device without exposing ports to your network.
 
-**On the server** - create a systemd override to bind to all interfaces:
-```bash
-# Create drop-in override (single command, no editor)
-sudo mkdir -p /etc/systemd/system/ollama-cpu.service.d/
-echo -e '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"' | sudo tee /etc/systemd/system/ollama-cpu.service.d/network.conf
-sudo systemctl daemon-reload && sudo systemctl restart ollama-cpu
-
-# Configure firewall (replace with your trusted subnet)
-sudo ufw allow from 192.168.1.0/24 to any port 11434
-```
-
-**On your local machine**:
-```bash
-export ANTHROPIC_AUTH_TOKEN=ollama
-export ANTHROPIC_BASE_URL=http://myserver:11434
-claude --model llama3.1
-```
+See [ROADMAP.md](ROADMAP.md#phase-7-remote-and-mobile-access) for details.
 
 ### What to Expect
 
