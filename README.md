@@ -66,13 +66,10 @@ claude --model llama3.1
 
 **On the server** - create a systemd override to bind to all interfaces:
 ```bash
-# Create a drop-in override
-sudo systemctl edit ollama-cpu
-# Add these lines in the editor:
-#   [Service]
-#   Environment="OLLAMA_HOST=0.0.0.0:11434"
-
-sudo systemctl restart ollama-cpu
+# Create drop-in override (single command, no editor)
+sudo mkdir -p /etc/systemd/system/ollama-cpu.service.d/
+echo -e '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"' | sudo tee /etc/systemd/system/ollama-cpu.service.d/network.conf
+sudo systemctl daemon-reload && sudo systemctl restart ollama-cpu
 
 # Configure firewall (replace with your trusted subnet)
 sudo ufw allow from 192.168.1.0/24 to any port 11434
