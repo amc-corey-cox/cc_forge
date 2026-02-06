@@ -28,6 +28,67 @@ This project is in active development (Phase 3: MVP Integration). Local AI codin
 
 See [ROADMAP.md](ROADMAP.md) for the implementation plan.
 
+## Quick Start: Claude Code with Local Models
+
+Run Claude Code using local Ollama models instead of cloud APIs.
+
+### Prerequisites
+
+- Ollama 0.15+ running on your server (see [LOCAL-OLLAMA-SETUP.md](docs/LOCAL-OLLAMA-SETUP.md))
+- Claude Code CLI installed (see [Anthropic's documentation](https://docs.anthropic.com/en/docs/claude-code))
+- A model pulled: `ollama pull llama3.1`
+
+### Running on the Server
+
+Run Claude Code directly on your Ollama server (via SSH or local terminal - no difference):
+
+```bash
+# If remote, SSH to your server first
+ssh myserver
+
+# Set environment and run
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_BASE_URL=http://localhost:11434
+claude --model llama3.1
+```
+
+For GPU acceleration (requires [shim setup](docs/LOCAL-OLLAMA-SETUP.md#option-2-use-shim-for-gpu-advanced)):
+```bash
+export ANTHROPIC_BASE_URL=http://localhost:4001
+claude --model llama3.1
+```
+
+**Note:** Whether you SSH in or use a local terminal, the commands are identical - Claude Code connects to Ollama on localhost either way.
+
+### Remote Access (Coming Soon)
+
+Secure remote access via Tailscale is planned for Phase 7. This will allow running Claude Code from any device without exposing ports to your network.
+
+See [ROADMAP.md](ROADMAP.md#phase-7-remote-and-mobile-access) for details.
+
+### What to Expect
+
+- **First request**: 60-90 seconds (Claude Code sends a large ~18KB system prompt)
+- **Subsequent requests**: Faster while model stays loaded
+- **Quality**: Local 7B models are much weaker than cloud Claude - best for simple tasks
+
+For complex coding work, consider [Aider](https://aider.chat) (optimized for local models) or cloud Claude.
+
+### Troubleshooting
+
+```bash
+# Check Ollama is running
+curl http://localhost:11434/api/tags
+
+# Check available models
+ollama list
+
+# Test basic inference
+ollama run llama3.1 "Hello"
+```
+
+See [docs/LOCAL-OLLAMA-SETUP.md](docs/LOCAL-OLLAMA-SETUP.md) for detailed configuration.
+
 ## Documentation
 
 - [DESIGN.md](DESIGN.md) - Architectural vision and detailed design
