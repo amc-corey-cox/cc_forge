@@ -54,8 +54,38 @@ The key security boundary is **no host mount**. The agent container:
 - Has no access to host filesystem or host mounts
 - All output is visible as git commits in Forgejo
 
-**Note**: The current bridge network does not enforce egress restrictions — containers could
-theoretically reach the internet. Full network isolation (egress blocking) is planned for Phase 2.
+### Network Access: Intent vs. Current State
+
+Agents legitimately need some internet access — reading documentation, searching Stack Overflow,
+checking language references. But they should not be making external API calls (cloud AI services,
+webhooks, etc.) or exfiltrating repository contents.
+
+**What we want to allow:**
+- HTTP/HTTPS reads to documentation and reference sites
+- DNS resolution
+
+**What we want to prevent:**
+- Calls to external AI APIs (OpenAI, Anthropic cloud, etc.)
+- Pushing code to external git hosts (GitHub, GitLab)
+- Arbitrary outbound connections (reverse shells, data exfiltration)
+
+**Current state (Phase 1):** The bridge network has no egress restrictions. Agents can reach
+anything. The primary safety boundary is the Forgejo review gate — all code changes are visible
+as commits before they reach your real repo.
+
+**Possible enforcement approaches (Phase 2+):**
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| Egress proxy (Squid/mitmproxy) with allowlist | Fine-grained URL control | Complex setup, TLS inspection is invasive |
+| DNS-based filtering | Simple, blocks by domain | Easy to bypass, no path-level control |
+| iptables/nftables rules | No extra services | Hard to maintain, protocol-unaware |
+| `internal: true` network + explicit proxy | Strong isolation | Breaks legitimate web access entirely |
+| Audit logging (no blocking) | Zero friction | Doesn't prevent, only detects |
+
+The right answer likely involves a combination: audit logging first (know what agents are doing),
+then a lightweight proxy if patterns emerge that need blocking. Premature lockdown risks making
+agents useless for real work.
 
 ---
 
