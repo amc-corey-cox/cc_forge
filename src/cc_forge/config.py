@@ -57,13 +57,17 @@ def _load_env_file(path: Path) -> dict[str, str]:
 
 
 def _resolve(key: str) -> str:
-    """Resolve a config value: env var > .env files > default."""
+    """Resolve a config value: env var > .env files > default.
+
+    Empty strings are treated as unset so that auto-discovery still works
+    (e.g. FORGE_COMPOSE_FILE="" won't suppress _find_compose_file()).
+    """
     val = os.environ.get(key)
-    if val is not None:
+    if val is not None and val != "":
         return val
     for env_file in _ENV_FILES:
         file_env = _load_env_file(env_file)
-        if key in file_env:
+        if key in file_env and file_env[key] != "":
             return file_env[key]
     default = _DEFAULTS.get(key, "")
     if key == "FORGE_COMPOSE_FILE" and not default:

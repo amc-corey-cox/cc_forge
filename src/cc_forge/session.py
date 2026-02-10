@@ -15,6 +15,7 @@ from cc_forge.docker import (
 )
 from cc_forge.forgejo import ForgejoClient
 from cc_forge.git import (
+    GitError,
     add_remote,
     get_current_branch,
     get_remote_url,
@@ -68,6 +69,7 @@ def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claud
 
         # 6. Push to Forgejo using a temporary authenticated URL
         click.echo(f"Pushing {branch} to Forgejo...")
+        original_url = get_remote_url(repo_root, "forgejo")
         if config.forgejo_token:
             auth_url = clone_url.replace("://", f"://{owner}:{config.forgejo_token}@")
             set_remote_url(repo_root, "forgejo", auth_url)
@@ -77,9 +79,12 @@ def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claud
             click.echo(f"Error: push to Forgejo failed: {e}", err=True)
             raise SystemExit(1)
         finally:
-            # Always restore unauthenticated URL so token doesn't persist in .git/config
+            # Best-effort restore so token doesn't persist in .git/config
             if config.forgejo_token:
-                set_remote_url(repo_root, "forgejo", clone_url)
+                try:
+                    set_remote_url(repo_root, "forgejo", original_url)
+                except GitError:
+                    click.echo("Warning: could not restore forgejo remote URL.", err=True)
 
     # 7. Launch agent container
     click.echo(f"Starting {agent} agent container...")

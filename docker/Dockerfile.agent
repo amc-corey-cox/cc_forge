@@ -24,8 +24,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code (globally via npm, available to all users)
-RUN npm install -g @anthropic-ai/claude-code 2>/dev/null || \
-    echo "Claude Code: verify install method and add manually if needed"
+RUN npm install -g @anthropic-ai/claude-code
 
 # Create non-root user
 RUN useradd -m -s /bin/bash agent && \

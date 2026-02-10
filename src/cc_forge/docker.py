@@ -7,6 +7,7 @@ import sys
 import time
 from pathlib import Path
 
+import click
 import docker
 from docker.errors import NotFound, ImageNotFound
 
@@ -67,7 +68,7 @@ def ensure_agent_image_built(config: ForgeConfig) -> str:
     if not dockerfile.is_file():
         raise RuntimeError(f"Dockerfile.agent not found in {dockerfile_dir}")
 
-    print(f"Building agent image {image_tag}...")
+    click.echo(f"Building agent image {image_tag}...")
     client.images.build(
         path=str(dockerfile_dir),
         dockerfile="Dockerfile.agent",
@@ -110,9 +111,9 @@ def run_agent_container(
             "REPO_URL": clone_url,
             "REPO_BRANCH": branch,
             "FORGE_AGENT": agent,
-            "OLLAMA_HOST": "http://forge-ollama-proxy:11434",
+            "OLLAMA_HOST": config.ollama_cpu_url,
             "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_BASE_URL": "http://forge-ollama-proxy:11434",
+            "ANTHROPIC_BASE_URL": config.ollama_cpu_url,
         },
         labels={"forge.role": "agent", "forge.repo": repo_name},
     )
