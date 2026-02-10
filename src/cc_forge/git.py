@@ -66,3 +66,11 @@ def add_remote(path: str | Path, name: str, url: str) -> None:
 
 def push_to_remote(path: str | Path, remote: str, branch: str) -> None:
     _run(["push", "-u", remote, branch], cwd=path)
+
+
+def set_remote_url(path: str | Path, name: str, url: str) -> None:
+    _run(["remote", "set-url", name, url], cwd=path)
+
+
+def get_remote_url(path: str | Path, name: str) -> str:
+    return _run(["remote", "get-url", name], cwd=path)

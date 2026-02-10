@@ -11,13 +11,14 @@ fi
 
 # Configure git credential helper for token-based Forgejo auth
 if [ -n "$FORGEJO_TOKEN" ] && [ -n "$FORGEJO_URL" ]; then
-    # Extract host from FORGEJO_URL for credential matching
+    # Extract protocol and host from FORGEJO_URL
+    FORGEJO_PROTO=$(echo "$FORGEJO_URL" | sed 's|://.*||')
     FORGEJO_HOST=$(echo "$FORGEJO_URL" | sed 's|https\?://||' | sed 's|/.*||')
-    git config --global credential.helper store
-    # Store credentials for Forgejo
-    mkdir -p ~/.git-credentials 2>/dev/null || true
-    echo "http://forge-agent:${FORGEJO_TOKEN}@${FORGEJO_HOST}" > ~/.git-credentials
-    git config --global credential.helper "store --file=$HOME/.git-credentials"
+    # Write credentials file with restrictive permissions
+    CRED_FILE="$HOME/.git-credentials"
+    echo "${FORGEJO_PROTO}://forge-agent:${FORGEJO_TOKEN}@${FORGEJO_HOST}" > "$CRED_FILE"
+    chmod 600 "$CRED_FILE"
+    git config --global credential.helper "store --file=$CRED_FILE"
 fi
 
 echo "Cloning $REPO_URL (branch: ${REPO_BRANCH:-main})..."

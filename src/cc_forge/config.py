@@ -9,15 +9,29 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+def _find_compose_file() -> str:
+    """Search for docker-compose.yml in known locations."""
+    candidates = [
+        # Source checkout (editable install or running from repo)
+        Path(__file__).resolve().parent.parent.parent / "docker" / "docker-compose.yml",
+        # Current working directory
+        Path.cwd() / "docker" / "docker-compose.yml",
+        # User config directory
+        Path.home() / ".config" / "forge" / "docker-compose.yml",
+    ]
+    for p in candidates:
+        if p.is_file():
+            return str(p)
+    return ""
+
+
 _DEFAULTS = {
     "FORGE_FORGEJO_URL": "http://localhost:3000",
     "FORGE_FORGEJO_TOKEN": "",
     "FORGE_OLLAMA_CPU_URL": "http://localhost:11434",
     "FORGE_OLLAMA_GPU_URL": "http://localhost:11435",
     "FORGE_AGENT_IMAGE": "cc-forge-agent:latest",
-    "FORGE_COMPOSE_FILE": str(
-        Path(__file__).resolve().parent.parent.parent / "docker" / "docker-compose.yml"
-    ),
+    "FORGE_COMPOSE_FILE": "",
 }
 
 _ENV_FILES = [
@@ -51,7 +65,10 @@ def _resolve(key: str) -> str:
         file_env = _load_env_file(env_file)
         if key in file_env:
             return file_env[key]
-    return _DEFAULTS.get(key, "")
+    default = _DEFAULTS.get(key, "")
+    if key == "FORGE_COMPOSE_FILE" and not default:
+        return _find_compose_file()
+    return default
 
 
 @dataclass(frozen=True)

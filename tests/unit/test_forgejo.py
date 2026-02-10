@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 
 from cc_forge.config import ForgeConfig
@@ -65,6 +64,16 @@ def test_repo_exists_false(client: ForgejoClient, httpx_mock) -> None:
         text="not found",
     )
     assert client.repo_exists("admin", "nope") is False
+
+
+def test_repo_exists_raises_on_auth_error(client: ForgejoClient, httpx_mock) -> None:
+    httpx_mock.add_response(
+        url="http://localhost:3000/api/v1/repos/admin/secret",
+        status_code=401,
+        text="unauthorized",
+    )
+    with pytest.raises(ForgejoError, match="401"):
+        client.repo_exists("admin", "secret")
 
 
 def test_create_repo(client: ForgejoClient, httpx_mock) -> None:

@@ -17,11 +17,13 @@ from cc_forge.forgejo import ForgejoClient
 from cc_forge.git import (
     add_remote,
     get_current_branch,
+    get_remote_url,
     get_repo_name,
     get_repo_root,
     has_remote,
     is_git_repo,
     push_to_remote,
+    set_remote_url,
 )
 
 
@@ -59,23 +61,25 @@ def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claud
 
         clone_url = forgejo.get_repo_clone_url(owner, repo_name)
 
-        # 5. Add forgejo remote if missing
+        # 5. Add forgejo remote if missing (unauthenticated URL — no token in .git/config)
         if not has_remote(repo_root, "forgejo"):
-            # Build authenticated remote URL
-            remote_url = clone_url
-            if config.forgejo_token:
-                remote_url = clone_url.replace(
-                    "://", f"://{owner}:{config.forgejo_token}@"
-                )
-            add_remote(repo_root, "forgejo", remote_url)
+            add_remote(repo_root, "forgejo", clone_url)
             click.echo("Added 'forgejo' remote.")
 
-        # 6. Push to Forgejo
+        # 6. Push to Forgejo using a temporary authenticated URL
         click.echo(f"Pushing {branch} to Forgejo...")
+        if config.forgejo_token:
+            auth_url = clone_url.replace("://", f"://{owner}:{config.forgejo_token}@")
+            set_remote_url(repo_root, "forgejo", auth_url)
         try:
             push_to_remote(repo_root, "forgejo", branch)
         except Exception as e:
-            click.echo(f"Warning: push failed ({e}). Continuing anyway.", err=True)
+            click.echo(f"Error: push to Forgejo failed: {e}", err=True)
+            raise SystemExit(1)
+        finally:
+            # Always restore unauthenticated URL so token doesn't persist in .git/config
+            if config.forgejo_token:
+                set_remote_url(repo_root, "forgejo", clone_url)
 
     # 7. Launch agent container
     click.echo(f"Starting {agent} agent container...")

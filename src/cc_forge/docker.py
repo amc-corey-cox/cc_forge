@@ -27,7 +27,7 @@ def ensure_infrastructure_running(config: ForgeConfig) -> None:
         if forgejo.status == "running":
             return
     except NotFound:
-        pass
+        pass  # Container doesn't exist yet — need to start infrastructure
 
     compose_file = config.compose_file
     if not Path(compose_file).is_file():
@@ -45,7 +45,7 @@ def ensure_infrastructure_running(config: ForgeConfig) -> None:
             if forgejo.status == "running":
                 return
         except NotFound:
-            pass
+            pass  # Container not created yet — keep waiting
         time.sleep(1)
 
     raise RuntimeError("Forgejo container did not start within 30 seconds")
@@ -139,7 +139,7 @@ def cleanup_container(container_id: str) -> None:
         container.stop(timeout=5)
         container.remove()
     except NotFound:
-        pass
+        pass  # Already removed — nothing to clean up
 
 
 def stop_container(container_id: str) -> None:

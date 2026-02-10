@@ -71,10 +71,12 @@ The agent container (`Dockerfile.agent`) is built and managed by the `forge` CLI
 docker build -f Dockerfile.agent -t cc-forge-agent:latest .
 ```
 
-## Network Isolation
+## Network
 
-All containers run on `forge-network`. Agent containers can only reach:
+All containers run on `forge-network` (a Docker bridge network). Agent containers interact with:
 - Forgejo (for git clone/push)
 - Ollama proxies (for AI inference)
 
-They cannot reach the host filesystem, internet, or other services.
+The primary isolation boundary is **no host filesystem mount** — agents clone from Forgejo rather
+than bind-mounting your working directory. The current bridge network does not block outbound
+internet access; egress restrictions are planned for Phase 2.

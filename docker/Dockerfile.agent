@@ -23,13 +23,7 @@ RUN apt-get update && apt-get install -y \
     vim-tiny \
     && rm -rf /var/lib/apt/lists/*
 
-# Ensure pipx is in PATH for root installs
-ENV PATH="/root/.local/bin:$PATH"
-
-# Install Aider via pipx
-RUN pipx install aider-chat
-
-# Install Claude Code
+# Install Claude Code (globally via npm, available to all users)
 RUN npm install -g @anthropic-ai/claude-code 2>/dev/null || \
     echo "Claude Code: verify install method and add manually if needed"
 

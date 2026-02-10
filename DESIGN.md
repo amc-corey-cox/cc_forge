@@ -31,7 +31,7 @@ User types `forge` in a git repo
        │    └─ Container clones from Forgejo (NOT host mount)
        │    └─ Has Claude Code + Aider installed
        │    └─ Can reach: Forgejo (port 3000), Ollama (ports 11434/11435)
-       │    └─ Cannot reach: host filesystem, internet, GitHub
+       │    └─ Cannot reach: host filesystem
        └─ Attaches terminal → interactive Claude Code session
               │
               ▼
@@ -49,10 +49,13 @@ User types `forge` in a git repo
 The key security boundary is **no host mount**. The agent container:
 
 - Clones from Forgejo, not your filesystem
-- Runs on an isolated Docker network (`forge-network`)
-- Can only reach Forgejo and Ollama proxies
-- Cannot reach the internet, GitHub, or host services
+- Runs on a dedicated Docker network (`forge-network`)
+- Reaches Forgejo and Ollama via network proxies
+- Has no access to host filesystem or host mounts
 - All output is visible as git commits in Forgejo
+
+**Note**: The current bridge network does not enforce egress restrictions — containers could
+theoretically reach the internet. Full network isolation (egress blocking) is planned for Phase 2.
 
 ---
 

@@ -54,12 +54,15 @@ class ForgejoClient:
         return resp.json()["login"]
 
     def repo_exists(self, owner: str, repo: str) -> bool:
-        """Check if a repository exists."""
-        try:
-            self._request("GET", f"/repos/{owner}/{repo}")
-            return True
-        except ForgejoError:
+        """Check if a repository exists. Only treats 404 as 'not found'."""
+        resp = self._client.request("GET", f"/repos/{owner}/{repo}")
+        if resp.status_code == 404:
             return False
+        if resp.status_code >= 400:
+            raise ForgejoError(
+                f"GET /repos/{owner}/{repo} returned {resp.status_code}: {resp.text}"
+            )
+        return True
 
     def create_repo(self, name: str, *, private: bool = False) -> dict:
         """Create a new repository for the authenticated user."""
