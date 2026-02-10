@@ -4,14 +4,14 @@
 
 ## Project Overview
 
-CC Forge is a local-first AI agents development system. You are helping build a self-improving autonomous software development pipeline.
+CC Forge is a CLI tool (`forge`) for safe, containerized AI agent sessions backed by local Ollama models. Changes go through a local Forgejo instance as a review gate.
 
 ## Key Files
 
 - AGENTS.md - Complete agent instructions (READ THIS)
-- DESIGN.md - Architectural vision
-- ROADMAP.md - Implementation plan
-- README.md - Public project description
+- DESIGN.md - Architecture and safety model
+- ROADMAP.md - Implementation phases
+- README.md - Quick start and usage
 
 ## Critical Rules
 
@@ -23,6 +23,9 @@ CC Forge is a local-first AI agents development system. You are helping build a 
 ## Code Style
 
 - Python is the primary language
+- CLI framework: Click
+- HTTP client: httpx
+- Container management: Docker SDK
 - Use type hints for public interfaces
 - Follow existing patterns in the codebase
 - Docstrings for public functions only
@@ -33,13 +36,3 @@ CC Forge is a local-first AI agents development system. You are helping build a 
 - Descriptive branch names: feature/*, fix/*
 - PRs require clear descriptions
 - Never commit secrets
-
-## Teams
-
-This project has four agent teams:
-- Dev Team: Creates PRs from issues
-- Test Team: Writes and verifies tests
-- Red Team: Adversarial review
-- Blue Team: Test quality validation
-
-Understand which team's code you're working on and respect boundaries.
