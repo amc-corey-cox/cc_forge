@@ -1,0 +1,61 @@
+# CC Forge Agent Container
+# Clones from Forgejo, runs AI coding agents in isolation
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv \
+    pipx \
+    nodejs \
+    npm \
+    build-essential \
+    jq \
+    tree \
+    vim-tiny \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code (globally via npm, available to all users)
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create non-root user
+RUN useradd -m -s /bin/bash agent && \
+    mkdir -p /workspace && \
+    chown -R agent:agent /workspace
+
+# Install tools for the agent user
+USER agent
+ENV PATH="/home/agent/.local/bin:$PATH"
+RUN pipx install aider-chat
+
+# Forgejo connection (set at container launch)
+ENV FORGEJO_URL=""
+ENV FORGEJO_TOKEN=""
+ENV REPO_URL=""
+ENV REPO_BRANCH="main"
+ENV FORGE_AGENT="claude"
+
+# Ollama connection (via forge-network proxies)
+ENV OLLAMA_HOST="http://forge-ollama-proxy:11434"
+ENV ANTHROPIC_AUTH_TOKEN="ollama"
+ENV ANTHROPIC_BASE_URL="http://forge-ollama-proxy:11434"
+
+# Git configuration
+RUN git config --global user.name "Forge Agent" && \
+    git config --global user.email "agent@forge.local" && \
+    git config --global init.defaultBranch main
+
+WORKDIR /workspace
+
+COPY --chown=agent:agent entrypoint.sh /home/agent/entrypoint.sh
+RUN chmod +x /home/agent/entrypoint.sh
+
+ENTRYPOINT ["/home/agent/entrypoint.sh"]

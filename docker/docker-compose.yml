@@ -1,0 +1,43 @@
+# CC Forge Infrastructure
+# Forgejo (local git hosting) + Ollama proxies for agent containers
+
+services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:14
+    container_name: forge-forgejo
+    restart: unless-stopped
+    volumes:
+      - forgejo-data:/data
+    ports:
+      - "3000:3000"
+      - "222:22"
+    networks:
+      - forge-network
+
+  ollama-proxy:
+    image: alpine/socat:latest
+    container_name: forge-ollama-proxy
+    restart: unless-stopped
+    command: TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - forge-network
+
+  ollama-gpu-proxy:
+    image: alpine/socat:latest
+    container_name: forge-ollama-gpu-proxy
+    restart: unless-stopped
+    command: TCP-LISTEN:11435,fork,reuseaddr TCP:host.docker.internal:11435
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - forge-network
+
+networks:
+  forge-network:
+    name: forge-network
+    driver: bridge
+
+volumes:
+  forgejo-data:

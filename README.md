@@ -1,103 +1,87 @@
 # CC Forge
 
-A local-first AI agents development system for autonomous software development.
+A CLI tool for safe, containerized AI agent sessions backed by local models.
 
 ## What is this?
 
-CC Forge is an experimental project to build a self-improving software development pipeline using AI agents running on local hardware. The system consists of multiple agent teams that work together (and challenge each other) to maintain code quality.
+Type `forge` in any git repository to get an interactive AI coding session where:
 
-## Teams
+- The agent works in an isolated Docker container
+- Changes go through a local Forgejo instance (not your filesystem)
+- You review and approve work before pulling it to your real repo
+- Everything runs on local hardware via Ollama — no cloud APIs needed
 
-- **Dev Team**: Takes issues and creates PRs for bugs and features
-- **Test Team**: Creates comprehensive tests and verifies logic
-- **Red Team**: Adversarial review to find weaknesses in PRs
-- **Blue Team**: Validates test quality through mutation testing
-
-The system also includes a knowledge base component for tracking developments in AI.
-
-## Principles
-
-- **Local-First**: Runs on local hardware with local models
-- **Self-Bootstrapping**: The system develops itself
-- **Transparent**: All agent actions are logged and auditable
-- **Defense in Depth**: Multiple teams ensure quality through redundancy
-
-## Status
-
-This project is in active development (Phase 3: MVP Integration). Local AI coding assistant is functional.
-
-See [ROADMAP.md](ROADMAP.md) for the implementation plan.
-
-## Quick Start: Claude Code with Local Models
-
-Run Claude Code using local Ollama models instead of cloud APIs.
+## Quick Start
 
 ### Prerequisites
 
-- Ollama 0.15+ running on your server (see [LOCAL-OLLAMA-SETUP.md](docs/LOCAL-OLLAMA-SETUP.md))
-- Claude Code CLI installed (see [Anthropic's documentation](https://docs.anthropic.com/en/docs/claude-code))
-- A model pulled: `ollama pull llama3.1`
+- Docker and Docker Compose
+- Ollama running locally (see [docs/LOCAL-OLLAMA-SETUP.md](docs/LOCAL-OLLAMA-SETUP.md))
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
 
-### Running on the Server
-
-Run Claude Code directly on your Ollama server (via SSH or local terminal - no difference):
+### Install
 
 ```bash
-# If remote, SSH to your server first
-ssh myserver
-
-# Set environment and run
-export ANTHROPIC_AUTH_TOKEN=ollama
-export ANTHROPIC_BASE_URL=http://localhost:11434
-claude --model llama3.1
+git clone https://github.com/amc-corey-cox/cc_forge.git
+cd cc_forge
+uv sync
 ```
 
-For GPU acceleration (requires [shim setup](docs/LOCAL-OLLAMA-SETUP.md#option-2-use-shim-for-gpu-advanced)):
-```bash
-export ANTHROPIC_BASE_URL=http://localhost:4001
-claude --model llama3.1
-```
+### First-Time Setup
 
-**Note:** Whether you SSH in or use a local terminal, the commands are identical - Claude Code connects to Ollama on localhost either way.
+1. Start the forge infrastructure:
+   ```bash
+   docker compose -f docker/docker-compose.yml up -d
+   ```
 
-### Remote Access (Coming Soon)
+2. Open Forgejo at `http://localhost:3000` and create an admin account
 
-Secure remote access via Tailscale is planned for Phase 7. This will allow running Claude Code from any device without exposing ports to your network.
+3. Generate an API token in Forgejo (Settings > Applications > Generate Token)
 
-See [ROADMAP.md](ROADMAP.md#phase-7-remote-and-mobile-access) for details.
+4. Configure forge:
+   ```bash
+   mkdir -p ~/.config/forge
+   cat > ~/.config/forge/config.env << 'EOF'
+   FORGE_FORGEJO_TOKEN=your-token-here
+   EOF
+   ```
 
-### What to Expect
-
-- **First request**: 60-90 seconds (Claude Code sends a large ~18KB system prompt)
-- **Subsequent requests**: Faster while model stays loaded
-- **Quality**: Local 7B models are much weaker than cloud Claude - best for simple tasks
-
-For complex coding work, consider [Aider](https://aider.chat) (optimized for local models) or cloud Claude.
-
-### Troubleshooting
+### Usage
 
 ```bash
-# Check Ollama is running
-curl http://localhost:11434/api/tags
+# In any git repo:
+forge
 
-# Check available models
-ollama list
+# Use Aider instead of Claude Code:
+forge run --agent aider
 
-# Test basic inference
-ollama run llama3.1 "Hello"
+# Check running sessions:
+forge status
+
+# Stop all sessions:
+forge stop --all
 ```
 
-See [docs/LOCAL-OLLAMA-SETUP.md](docs/LOCAL-OLLAMA-SETUP.md) for detailed configuration.
+### Review Workflow
+
+1. `forge` syncs your repo to local Forgejo and launches an agent container
+2. The agent works, commits, and pushes to Forgejo
+3. Review changes in Forgejo web UI (`http://localhost:3000`)
+4. Pull approved work: `git pull forgejo <branch>`
+5. Push to GitHub as usual
 
 ## Documentation
 
-- [DESIGN.md](DESIGN.md) - Architectural vision and detailed design
-- [AGENTS.md](AGENTS.md) - Instructions for AI agents working in this repo
-- [ROADMAP.md](ROADMAP.md) - Phased implementation plan
+- [DESIGN.md](DESIGN.md) — Architecture and safety model
+- [ROADMAP.md](ROADMAP.md) — Implementation phases
+- [AGENTS.md](AGENTS.md) — Instructions for AI agents working in this repo
+- [docs/](docs/) — Operational guides (Ollama setup, Docker, agent frameworks)
 
-## Contributing
+## Status
 
-This is currently a personal project. If you're interested in the concept, feel free to fork and adapt for your own use.
+Phase 1: Foundation — `forge` CLI with end-to-end session flow.
+
+See [ROADMAP.md](ROADMAP.md) for the full plan.
 
 ## License
 

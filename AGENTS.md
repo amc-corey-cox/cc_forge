@@ -8,7 +8,7 @@ This document is the source of truth for AI agents working in this repository. W
 
 ## Your Role
 
-You are part of a local-first AI development system. This repository builds and runs an autonomous software development pipeline using AI agents. The system is designed to be self-improving: agents working here are building the tools that agents (including you) will use.
+You are working on CC Forge, a CLI tool (`forge`) that creates safe, containerized AI agent sessions backed by local Ollama models. The safety boundary is Forgejo — agents clone from Forgejo, work in containers, and push changes back. No host filesystem access.
 
 ---
 
@@ -27,9 +27,9 @@ This project prioritizes local execution. When suggesting solutions:
 **Intent**: Prevent exposure of information that could enable attacks or identify the system owner.
 
 **Avoid** (security-sensitive):
-- IP addresses and network topology (e.g., `192.168.1.50`, subnet details)
-- Absolute paths with usernames (e.g., `/home/corey/projects/...`)
-- Specific hardware model numbers (e.g., `Intel Arc A770`, `i7-12700K`)
+- IP addresses and network topology
+- Absolute paths with usernames
+- Specific hardware model numbers
 - Credentials, API keys, tokens
 
 **Acceptable** (not security-sensitive):
@@ -41,7 +41,7 @@ This project prioritizes local execution. When suggesting solutions:
 **Runtime configuration** (secrets, IPs, etc.) belongs in:
 - Environment variables
 - `.env` files (gitignored)
-- GitHub Secrets (for CI/CD)
+- `~/.config/forge/config.env`
 
 ### 3. Transparency and Auditability
 
@@ -53,13 +53,7 @@ All work should be traceable:
 
 ### 4. Defense in Depth
 
-This system has multiple teams that check each other's work:
-- Dev Team creates
-- Test Team verifies
-- Red Team attacks
-- Blue Team validates
-
-When working on any team's functionality, remember this adversarial structure exists for quality, not obstruction.
+The forge architecture itself enforces this: agents work in isolated containers and can only interact through Forgejo. Future multi-agent teams will add review layers.
 
 ---
 
@@ -67,7 +61,7 @@ When working on any team's functionality, remember this adversarial structure ex
 
 ### Language and Style
 
-- **Primary Language**: Python (for agent code and tooling)
+- **Primary Language**: Python (for CLI and modules)
 - **Style**: Follow existing patterns in the codebase
 - **Typing**: Use type hints for public interfaces
 - **Documentation**: Docstrings for public functions, inline comments only when non-obvious
@@ -76,17 +70,34 @@ When working on any team's functionality, remember this adversarial structure ex
 
 ```
 cc_forge/
-├── AGENTS.md           # This file (CLAUDE.md symlinks here)
-├── DESIGN.md           # Architectural vision
-├── ROADMAP.md          # Implementation phases
-├── README.md           # Public-facing description
-├── src/                # Source code
-│   ├── agents/         # Agent implementations
-│   └── teams/          # Team-specific logic
-├── tests/              # Test suites
-├── docker/             # Container definitions
-├── docs/               # Operational documentation (setup guides, model registry)
-└── scripts/            # Utility scripts
+├── pyproject.toml              # uv project, forge entry point
+├── .python-version             # For mise
+├── AGENTS.md                   # This file (CLAUDE.md symlinks here)
+├── DESIGN.md                   # Architecture and safety model
+├── ROADMAP.md                  # Implementation phases
+├── README.md                   # Quick start and usage
+├── src/
+│   └── cc_forge/               # Python package
+│       ├── __init__.py         # Version string
+│       ├── cli.py              # Click CLI entry point
+│       ├── config.py           # Configuration loading
+│       ├── git.py              # Git operations (subprocess)
+│       ├── forgejo.py          # Forgejo API client (httpx)
+│       ├── docker.py           # Container lifecycle (Docker SDK)
+│       └── session.py          # Session orchestration
+├── tests/
+│   ├── unit/                   # Unit tests (mocked dependencies)
+│   └── integration/            # Integration tests (real Docker/Forgejo)
+├── docker/
+│   ├── docker-compose.yml      # Forgejo + Ollama proxies
+│   ├── Dockerfile.agent        # Agent container image
+│   ├── entrypoint.sh           # Clone + start agent
+│   └── README.md               # Docker stack documentation
+├── archive/                    # Historical reference
+├── docs/                       # Operational documentation
+├── scripts/                    # Utility scripts
+└── .github/
+    └── copilot-instructions.md
 ```
 
 ### Git Workflow
@@ -105,7 +116,7 @@ cc_forge/
 
 - Read any file in the repository
 - Suggest code changes
-- Run tests
+- Run tests (`pytest`)
 - Analyze and explain code
 - Create new files in appropriate locations
 - Modify files you've been asked to modify
@@ -116,7 +127,7 @@ cc_forge/
 - Changing project structure
 - Modifying CI/CD configuration
 - Anything touching security-sensitive code
-- Changes that affect multiple teams' code
+- Changes that affect the Docker infrastructure
 
 ### Never Do
 
@@ -125,79 +136,29 @@ cc_forge/
 - Modify `.gitignore` to hide files that should be tracked
 - Delete files without explicit permission
 - Push directly to `main` (use PRs)
-- Embed sensitive system information (see "No Sensitive System Information" above)
+- Embed sensitive system information (see above)
 
 ---
 
-## Working with Teams
+## Working with Teams (Future)
 
-When implementing team functionality, understand the boundaries:
+The multi-agent team structure is planned for Phase 5+:
 
-### Dev Team Agents
-- Focus: Creating solutions
-- Input: Issues, requirements
-- Output: Code, PRs
-- Constraint: Must write testable code
+- **Dev Team**: Takes issues, creates PRs
+- **Test Team**: Generates tests, verifies code
+- **Red Team**: Adversarial review of PRs
+- **Blue Team**: Mutation testing, test quality validation
 
-### Test Team Agents
-- Focus: Verification
-- Input: Code from Dev Team
-- Output: Tests, coverage reports
-- Constraint: Tests must be meaningful, not just coverage
-
-### Red Team Agents
-- Focus: Finding weaknesses
-- Input: PRs, implementations
-- Output: Vulnerability reports, failure cases
-- Constraint: Constructive criticism, not just blocking
-
-### Blue Team Agents
-- Focus: Validating test quality
-- Input: Test suites
-- Output: Mutation test results, gap analysis
-- Constraint: Actionable recommendations
+All inter-agent coordination will happen through Forgejo issues and PRs.
 
 ---
 
 ## Related Repositories
 
-This project has companion repositories that provide context and reference material:
-
-### cc_ai_knowledge (Reference)
-
-**Repository**: [cc_ai_knowledge](https://github.com/amc-corey-cox/cc_ai_knowledge)
-
-A curated knowledge base explaining AI/ML concepts. Use this to understand:
-- What is quantization? How do transformers work?
-- How do different approaches compare? What are the tradeoffs?
-- Curated insights from papers, blogs, and community experience
-
-When working in cc_forge, reference this knowledge base to ensure understanding aligns with documented concepts. Every claim in the knowledge base is traceable to primary sources.
-
-### cc_ai_model_ontology (Reference)
-
-**Repository**: [cc_ai_model_ontology](https://github.com/amc-corey-cox/cc_ai_model_ontology)
-
-A LinkML ontology cataloging AI models, capabilities, and deployment constraints. Use this for:
-- Structured information about model families and variants
-- Capability hierarchies (code generation, reasoning, etc.)
-- Hardware tier definitions and deployment constraints
-- Cross-references to Ollama, HuggingFace, etc.
-
-When implementing model selection or discussing model capabilities, reference this ontology for consistent terminology and accurate specifications.
-
----
-
-## Bootstrapping Context
-
-This project is in active development. During bootstrap phase:
-
-1. We're establishing patterns — propose good ones
-2. Infrastructure is being set up — Docker, Ollama, etc.
-3. The agent system will run local models — optimize for that
-4. External AI (like you reading this) helps bootstrap but won't be required long-term
-
-Your job during bootstrap: help create a system that won't need you.
+| Repository | Purpose |
+|------------|---------|
+| [cc_ai_knowledge](https://github.com/amc-corey-cox/cc_ai_knowledge) | Curated AI/ML concepts and explanations |
+| [cc_ai_model_ontology](https://github.com/amc-corey-cox/cc_ai_model_ontology) | Structured model catalog (LinkML) |
 
 ---
 
@@ -213,37 +174,10 @@ When working in this repository:
 
 ---
 
-## File References
-
-These files contain important context:
-
-| File | Purpose |
-|------|---------|
-| `DESIGN.md` | Full architectural vision |
-| `ROADMAP.md` | Implementation phases and priorities |
-| `README.md` | Public project description |
-| `docs/` | Operational documentation, model registry |
-| `docker/` | Container configurations (when created) |
-| `src/agents/` | Agent implementations (when created) |
-
-### External References
-
-| Repository | Purpose |
-|------------|---------|
-| [cc_ai_knowledge](https://github.com/amc-corey-cox/cc_ai_knowledge) | AI concepts and curated understanding |
-| [cc_ai_model_ontology](https://github.com/amc-corey-cox/cc_ai_model_ontology) | Structured model catalog (LinkML) |
-
----
-
 ## Updates to This Document
 
-This document should evolve as the project evolves. If you identify:
-- Missing guidance
-- Contradictions
-- Outdated information
-
-...flag it for human review rather than modifying unilaterally.
+This document should evolve as the project evolves. If you identify missing guidance, contradictions, or outdated information, flag it for human review rather than modifying unilaterally.
 
 ---
 
-*Last updated: 2026-01-30 - Clarified system information guidelines*
+*Last updated: 2026-02-10 — Updated for forge CLI architecture*

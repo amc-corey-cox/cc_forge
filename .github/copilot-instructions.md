@@ -4,7 +4,7 @@
 
 ## Quick Summary
 
-CC Forge is a local-first AI agents development system building an autonomous software development pipeline.
+CC Forge is a CLI tool (`forge`) for safe, containerized AI agent sessions backed by local Ollama models. Changes go through a local Forgejo instance as a review gate.
 
 ### Critical Rules
 
@@ -18,21 +18,15 @@ CC Forge is a local-first AI agents development system building an autonomous so
 | File | Purpose |
 |------|---------|
 | AGENTS.md | Complete agent instructions |
-| DESIGN.md | Architectural vision |
+| DESIGN.md | Architecture and safety model |
 | ROADMAP.md | Implementation phases |
 
 ### Code Conventions
 
 - Primary language: Python
+- CLI framework: Click
+- HTTP client: httpx
+- Container management: Docker SDK
 - Use type hints for public interfaces
 - Follow existing codebase patterns
 - Never commit secrets or credentials
-
-### Project Teams
-
-- **Dev Team**: Issue processing and PR creation
-- **Test Team**: Test generation and coverage
-- **Red Team**: Adversarial code review
-- **Blue Team**: Test suite validation
-
-Understand which team's code you're modifying and respect the boundaries between them.
