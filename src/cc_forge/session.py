@@ -13,6 +13,7 @@ from cc_forge.docker import (
     exec_agent,
     run_agent_container,
 )
+
 from cc_forge.forgejo import ForgejoClient
 from cc_forge.git import (
     GitError,
@@ -100,7 +101,7 @@ def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claud
 
     # 8. Exec agent interactively and wait
     try:
-        exec_agent(container_id, agent)
+        exec_agent(container_id, agent, config)
     finally:
         click.echo("\n--- Session ended. Cleaning up container...")
         cleanup_container(container_id)

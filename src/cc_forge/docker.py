@@ -147,12 +147,13 @@ def wait_for_ready(container_id: str, timeout: int = 60) -> None:
     raise RuntimeError("Timed out waiting for repo clone")
 
 
-def exec_agent(container_id: str, agent: str = "claude") -> int:
+def exec_agent(container_id: str, agent: str = "claude", config: ForgeConfig | None = None) -> int:
     """Exec the agent interactively inside a running container. Returns exit code."""
     wait_for_ready(container_id)
 
     if agent == "claude":
-        cmd = ["claude"]
+        model = config.claude_model if config else "qwen2.5-coder:7b-instruct-q4_K_M"
+        cmd = ["claude", "--model", model]
     elif agent == "aider":
         cmd = ["aider", "--model", "ollama/llama3.1"]
     else:
