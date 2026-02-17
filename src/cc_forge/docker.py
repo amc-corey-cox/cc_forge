@@ -91,10 +91,13 @@ def run_agent_container(
 
     container_name = f"{CONTAINER_PREFIX}{repo_name}-{int(time.time())}"
 
+    # Rewrite clone URL for container network: localhost → forge-forgejo
+    clone_url = repo_url.replace("://localhost:", "://forge-forgejo:")
+    clone_url = clone_url.replace("://127.0.0.1:", "://forge-forgejo:")
+
     # Inject token into clone URL for auth
-    clone_url = repo_url
     if config.forgejo_token:
-        clone_url = repo_url.replace(
+        clone_url = clone_url.replace(
             "://", f"://forge-agent:{config.forgejo_token}@"
         )
 
