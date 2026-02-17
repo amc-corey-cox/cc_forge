@@ -101,6 +101,11 @@ def run_agent_container(
             "://", f"://forge-agent:{config.forgejo_token}@"
         )
 
+    # Rewrite Ollama URL for container network
+    ollama_url = config.ollama_cpu_url
+    ollama_url = ollama_url.replace("://localhost:", "://forge-ollama-proxy:")
+    ollama_url = ollama_url.replace("://127.0.0.1:", "://forge-ollama-proxy:")
+
     container = client.containers.run(
         image_tag,
         detach=True,
@@ -112,9 +117,9 @@ def run_agent_container(
             "REPO_URL": clone_url,
             "REPO_BRANCH": branch,
             "FORGE_AGENT": agent,
-            "OLLAMA_HOST": config.ollama_cpu_url,
+            "OLLAMA_HOST": ollama_url,
             "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_BASE_URL": config.ollama_cpu_url,
+            "ANTHROPIC_BASE_URL": ollama_url,
         },
         labels={"forge.role": "agent", "forge.repo": repo_name},
     )
