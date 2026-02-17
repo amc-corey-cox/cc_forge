@@ -146,12 +146,13 @@ def exec_agent(container_id: str, agent: str = "claude") -> int:
     else:
         cmd = ["/bin/bash"]
 
-    result = subprocess.run(
-        ["docker", "exec", "-it", "-w", "/workspace/repo", container_id] + cmd,
-        stdin=sys.stdin,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-    )
+    docker_cmd = ["docker", "exec", "-w", "/workspace/repo"]
+    if sys.stdin.isatty():
+        docker_cmd += ["-it"]
+    docker_cmd.append(container_id)
+    docker_cmd += cmd
+
+    result = subprocess.run(docker_cmd)
     return result.returncode
 
 
