@@ -125,7 +125,11 @@ def wait_for_ready(container_id: str, timeout: int = 60) -> None:
         try:
             container = client.containers.get(container_id)
             if container.status != "running":
-                raise RuntimeError("Agent container exited unexpectedly")
+                logs = container.logs().decode(errors="replace")
+                raise RuntimeError(
+                    f"Agent container exited (status: {container.status}).\n"
+                    f"Container logs:\n{logs}"
+                )
             result = container.exec_run("test -d /workspace/repo/.git")
             if result.exit_code == 0:
                 return
