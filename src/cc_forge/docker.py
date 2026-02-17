@@ -120,11 +120,17 @@ def run_agent_container(
     return container.id
 
 
-def attach_terminal(container_id: str) -> int:
-    """Attach to a running container interactively. Returns exit code."""
-    # Docker SDK attach is unreliable for interactive use; use subprocess
+def exec_agent(container_id: str, agent: str = "claude") -> int:
+    """Exec the agent interactively inside a running container. Returns exit code."""
+    if agent == "claude":
+        cmd = ["claude"]
+    elif agent == "aider":
+        cmd = ["aider", "--model", "ollama/llama3.1"]
+    else:
+        cmd = ["/bin/bash"]
+
     result = subprocess.run(
-        ["docker", "attach", container_id],
+        ["docker", "exec", "-it", "-w", "/workspace/repo", container_id] + cmd,
         stdin=sys.stdin,
         stdout=sys.stdout,
         stderr=sys.stderr,

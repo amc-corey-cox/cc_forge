@@ -32,20 +32,8 @@ git clone --branch "${REPO_BRANCH:-main}" "$REPO_URL" /workspace/repo 2>&1 || {
 
 cd /workspace/repo
 
-echo "Repository cloned. Starting agent..."
+echo "Repository cloned. Ready for agent."
 echo ""
 
-case "${FORGE_AGENT:-claude}" in
-    claude)
-        echo "Starting Claude Code..."
-        exec claude
-        ;;
-    aider)
-        echo "Starting Aider..."
-        exec aider --model "ollama/${AIDER_MODEL:-llama3.1}"
-        ;;
-    *)
-        echo "Unknown agent: $FORGE_AGENT. Dropping to shell."
-        exec /bin/bash
-        ;;
-esac
+# Keep container alive — the forge CLI will exec the agent interactively
+exec sleep infinity

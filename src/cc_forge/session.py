@@ -8,9 +8,9 @@ import click
 
 from cc_forge.config import ForgeConfig
 from cc_forge.docker import (
-    attach_terminal,
     cleanup_container,
     ensure_infrastructure_running,
+    exec_agent,
     run_agent_container,
 )
 from cc_forge.forgejo import ForgejoClient
@@ -95,12 +95,12 @@ def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claud
         repo_name=repo_name,
         agent=agent,
     )
-    click.echo(f"Container started. Attaching terminal...")
+    click.echo(f"Container started. Launching {agent}...")
     click.echo("---")
 
-    # 8. Attach and wait
+    # 8. Exec agent interactively and wait
     try:
-        attach_terminal(container_id)
+        exec_agent(container_id, agent)
     finally:
         click.echo("\n--- Session ended. Cleaning up container...")
         cleanup_container(container_id)
