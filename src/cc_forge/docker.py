@@ -101,8 +101,6 @@ def run_agent_container(
     container = client.containers.run(
         image_tag,
         detach=True,
-        stdin_open=True,
-        tty=True,
         name=container_name,
         network="forge-network",
         environment={
@@ -120,8 +118,27 @@ def run_agent_container(
     return container.id
 
 
+def wait_for_ready(container_id: str, timeout: int = 60) -> None:
+    """Wait for the entrypoint to finish cloning (repo dir exists)."""
+    client = _docker_client()
+    for _ in range(timeout):
+        try:
+            container = client.containers.get(container_id)
+            if container.status != "running":
+                raise RuntimeError("Agent container exited unexpectedly")
+            result = container.exec_run("test -d /workspace/repo/.git")
+            if result.exit_code == 0:
+                return
+        except NotFound:
+            raise RuntimeError("Agent container disappeared")
+        time.sleep(1)
+    raise RuntimeError("Timed out waiting for repo clone")
+
+
 def exec_agent(container_id: str, agent: str = "claude") -> int:
     """Exec the agent interactively inside a running container. Returns exit code."""
+    wait_for_ready(container_id)
+
     if agent == "claude":
         cmd = ["claude"]
     elif agent == "aider":
