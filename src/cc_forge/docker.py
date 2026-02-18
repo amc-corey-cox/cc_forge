@@ -154,7 +154,7 @@ def exec_agent(container_id: str, agent: str = "claude", config: ForgeConfig | N
 
     if agent == "claude":
         model = config.claude_model if config else "qwen2.5-coder:7b-instruct-q4_K_M"
-        cmd = ["claude", "--model", model]
+        cmd = ["claude", "--dangerously-skip-permissions", "--model", model]
     elif agent == "aider":
         cmd = ["aider", "--model", "ollama/llama3.1"]
     else:
