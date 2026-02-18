@@ -121,6 +121,8 @@ def run_agent_container(
             "ANTHROPIC_AUTH_TOKEN": "ollama",
             "ANTHROPIC_BASE_URL": ollama_url,
             "DISABLE_PROMPT_CACHING": "true",
+            "API_TIMEOUT_MS": "3600000",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         },
         labels={"forge.role": "agent", "forge.repo": repo_name},
     )
