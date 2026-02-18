@@ -101,10 +101,10 @@ def run_agent_container(
             "://", f"://forge-agent:{config.forgejo_token}@"
         )
 
-    # Rewrite Ollama URL for container network — use GPU proxy for faster inference
-    ollama_url = config.ollama_gpu_url
-    ollama_url = ollama_url.replace("://localhost:", "://forge-ollama-gpu-proxy:")
-    ollama_url = ollama_url.replace("://127.0.0.1:", "://forge-ollama-gpu-proxy:")
+    # Rewrite Ollama URL for container network
+    ollama_url = config.ollama_cpu_url
+    ollama_url = ollama_url.replace("://localhost:", "://forge-ollama-proxy:")
+    ollama_url = ollama_url.replace("://127.0.0.1:", "://forge-ollama-proxy:")
 
     container = client.containers.run(
         image_tag,
