@@ -31,7 +31,7 @@ _DEFAULTS = {
     "FORGE_OLLAMA_CPU_URL": "http://localhost:11434",
     "FORGE_OLLAMA_GPU_URL": "http://localhost:11435",
     "FORGE_AGENT_IMAGE": "cc-forge-agent:latest",
-    "FORGE_CLAUDE_MODEL": "qwen3-coder",
+    "FORGE_CLAUDE_MODEL": "qwen3-coder-64k",
     "FORGE_COMPOSE_FILE": "",
 }
 
