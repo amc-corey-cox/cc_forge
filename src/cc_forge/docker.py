@@ -16,6 +16,17 @@ from cc_forge.config import ForgeConfig
 CONTAINER_PREFIX = "forge-agent-"
 
 
+def _rewrite_url(url: str, docker_host: str) -> str:
+    """Rewrite localhost/127.0.0.1 URLs to use a Docker network hostname."""
+    for local in ("localhost", "127.0.0.1"):
+        url = url.replace(f"://{local}:", f"://{docker_host}:")
+        url = url.replace(f"://{local}/", f"://{docker_host}/")
+        # Handle URLs ending without port or trailing slash
+        if url.endswith(f"://{local}"):
+            url = url.replace(f"://{local}", f"://{docker_host}")
+    return url
+
+
 def _docker_client() -> docker.DockerClient:
     return docker.from_env()
 
@@ -91,44 +102,80 @@ def run_agent_container(
 
     container_name = f"{CONTAINER_PREFIX}{repo_name}-{int(time.time())}"
 
-    # Inject token into clone URL for auth
-    clone_url = repo_url
-    if config.forgejo_token:
-        clone_url = repo_url.replace(
-            "://", f"://forge-agent:{config.forgejo_token}@"
-        )
+    # Rewrite URLs for container network: localhost → Docker service names
+    clone_url = _rewrite_url(repo_url, "forge-forgejo")
+    ollama_url = _rewrite_url(config.ollama_cpu_url, "forge-ollama-proxy")
+    forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
 
     container = client.containers.run(
         image_tag,
         detach=True,
-        stdin_open=True,
-        tty=True,
         name=container_name,
         network="forge-network",
         environment={
-            "FORGEJO_URL": config.forgejo_url,
+            "FORGEJO_URL": forgejo_url,
             "FORGEJO_TOKEN": config.forgejo_token,
             "REPO_URL": clone_url,
             "REPO_BRANCH": branch,
             "FORGE_AGENT": agent,
-            "OLLAMA_HOST": config.ollama_cpu_url,
+            "OLLAMA_HOST": ollama_url,
             "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_BASE_URL": config.ollama_cpu_url,
+            "ANTHROPIC_BASE_URL": ollama_url,
+            "DISABLE_PROMPT_CACHING": "true",
+            "API_TIMEOUT_MS": "3600000",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         },
         labels={"forge.role": "agent", "forge.repo": repo_name},
     )
     return container.id
 
 
-def attach_terminal(container_id: str) -> int:
-    """Attach to a running container interactively. Returns exit code."""
-    # Docker SDK attach is unreliable for interactive use; use subprocess
-    result = subprocess.run(
-        ["docker", "attach", container_id],
-        stdin=sys.stdin,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-    )
+def wait_for_ready(container_id: str, timeout: int = 60) -> None:
+    """Wait for the entrypoint to finish cloning (repo dir exists)."""
+    client = _docker_client()
+    for _ in range(timeout):
+        try:
+            container = client.containers.get(container_id)
+            if container.status in ("exited", "dead"):
+                logs = container.logs().decode(errors="replace")
+                raise RuntimeError(
+                    f"Agent container exited (status: {container.status}).\n"
+                    f"Container logs:\n{logs}"
+                )
+            if container.status == "running":
+                result = container.exec_run("test -d /workspace/repo/.git")
+                if result.exit_code == 0:
+                    return
+        except NotFound:
+            raise RuntimeError("Agent container disappeared")
+        time.sleep(1)
+    # Include logs in timeout error for diagnosability
+    try:
+        container = client.containers.get(container_id)
+        logs = container.logs().decode(errors="replace")
+    except NotFound:
+        logs = "(container not found)"
+    raise RuntimeError(f"Timed out waiting for repo clone.\nContainer logs:\n{logs}")
+
+
+def exec_agent(container_id: str, agent: str, config: ForgeConfig) -> int:
+    """Exec the agent interactively inside a running container. Returns exit code."""
+    wait_for_ready(container_id)
+
+    if agent == "claude":
+        cmd = ["claude", "--dangerously-skip-permissions", "--model", config.claude_model]
+    elif agent == "aider":
+        cmd = ["aider", "--model", "ollama/llama3.1"]
+    else:
+        cmd = ["/bin/bash"]
+
+    docker_cmd = ["docker", "exec", "-w", "/workspace/repo"]
+    if sys.stdin.isatty():
+        docker_cmd += ["-it"]
+    docker_cmd.append(container_id)
+    docker_cmd += cmd
+
+    result = subprocess.run(docker_cmd)
     return result.returncode
 
 
