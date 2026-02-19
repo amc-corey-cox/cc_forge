@@ -16,6 +16,17 @@ from cc_forge.config import ForgeConfig
 CONTAINER_PREFIX = "forge-agent-"
 
 
+def _rewrite_url(url: str, docker_host: str) -> str:
+    """Rewrite localhost/127.0.0.1 URLs to use a Docker network hostname."""
+    for local in ("localhost", "127.0.0.1"):
+        url = url.replace(f"://{local}:", f"://{docker_host}:")
+        url = url.replace(f"://{local}/", f"://{docker_host}/")
+        # Handle URLs ending without port or trailing slash
+        if url.endswith(f"://{local}"):
+            url = url.replace(f"://{local}", f"://{docker_host}")
+    return url
+
+
 def _docker_client() -> docker.DockerClient:
     return docker.from_env()
 
@@ -91,20 +102,10 @@ def run_agent_container(
 
     container_name = f"{CONTAINER_PREFIX}{repo_name}-{int(time.time())}"
 
-    # Rewrite clone URL for container network: localhost → forge-forgejo
-    clone_url = repo_url.replace("://localhost:", "://forge-forgejo:")
-    clone_url = clone_url.replace("://127.0.0.1:", "://forge-forgejo:")
-
-    # Inject token into clone URL for auth
-    if config.forgejo_token:
-        clone_url = clone_url.replace(
-            "://", f"://forge-agent:{config.forgejo_token}@"
-        )
-
-    # Rewrite Ollama URL for container network
-    ollama_url = config.ollama_cpu_url
-    ollama_url = ollama_url.replace("://localhost:", "://forge-ollama-proxy:")
-    ollama_url = ollama_url.replace("://127.0.0.1:", "://forge-ollama-proxy:")
+    # Rewrite URLs for container network: localhost → Docker service names
+    clone_url = _rewrite_url(repo_url, "forge-forgejo")
+    ollama_url = _rewrite_url(config.ollama_cpu_url, "forge-ollama-proxy")
+    forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
 
     container = client.containers.run(
         image_tag,
@@ -112,7 +113,7 @@ def run_agent_container(
         name=container_name,
         network="forge-network",
         environment={
-            "FORGEJO_URL": config.forgejo_url,
+            "FORGEJO_URL": forgejo_url,
             "FORGEJO_TOKEN": config.forgejo_token,
             "REPO_URL": clone_url,
             "REPO_BRANCH": branch,
@@ -135,28 +136,34 @@ def wait_for_ready(container_id: str, timeout: int = 60) -> None:
     for _ in range(timeout):
         try:
             container = client.containers.get(container_id)
-            if container.status != "running":
+            if container.status in ("exited", "dead"):
                 logs = container.logs().decode(errors="replace")
                 raise RuntimeError(
                     f"Agent container exited (status: {container.status}).\n"
                     f"Container logs:\n{logs}"
                 )
-            result = container.exec_run("test -d /workspace/repo/.git")
-            if result.exit_code == 0:
-                return
+            if container.status == "running":
+                result = container.exec_run("test -d /workspace/repo/.git")
+                if result.exit_code == 0:
+                    return
         except NotFound:
             raise RuntimeError("Agent container disappeared")
         time.sleep(1)
-    raise RuntimeError("Timed out waiting for repo clone")
+    # Include logs in timeout error for diagnosability
+    try:
+        container = client.containers.get(container_id)
+        logs = container.logs().decode(errors="replace")
+    except NotFound:
+        logs = "(container not found)"
+    raise RuntimeError(f"Timed out waiting for repo clone.\nContainer logs:\n{logs}")
 
 
-def exec_agent(container_id: str, agent: str = "claude", config: ForgeConfig | None = None) -> int:
+def exec_agent(container_id: str, agent: str, config: ForgeConfig) -> int:
     """Exec the agent interactively inside a running container. Returns exit code."""
     wait_for_ready(container_id)
 
     if agent == "claude":
-        model = config.claude_model if config else "qwen2.5-coder:7b-instruct-q4_K_M"
-        cmd = ["claude", "--dangerously-skip-permissions", "--model", model]
+        cmd = ["claude", "--dangerously-skip-permissions", "--model", config.claude_model]
     elif agent == "aider":
         cmd = ["aider", "--model", "ollama/llama3.1"]
     else:

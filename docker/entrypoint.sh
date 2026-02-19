@@ -35,5 +35,7 @@ cd /workspace/repo
 echo "Repository cloned. Ready for agent."
 echo ""
 
-# Keep container alive — the forge CLI will exec the agent interactively
-exec sleep infinity
+# Keep container alive — the forge CLI will exec the agent interactively.
+# TTL prevents orphaned containers if the CLI dies without cleanup.
+FORGE_AGENT_TTL_SECONDS="${FORGE_AGENT_TTL_SECONDS:-86400}"
+exec sleep "$FORGE_AGENT_TTL_SECONDS"
