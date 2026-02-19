@@ -95,6 +95,7 @@ def run_agent_container(
     branch: str,
     repo_name: str,
     agent: str = "claude",
+    use_gpu: bool = False,
 ) -> str:
     """Launch an agent container on forge-network. Returns container ID."""
     client = _docker_client()
@@ -104,7 +105,10 @@ def run_agent_container(
 
     # Rewrite URLs for container network: localhost → Docker service names
     clone_url = _rewrite_url(repo_url, "forge-forgejo")
-    ollama_url = _rewrite_url(config.ollama_cpu_url, "forge-ollama-proxy")
+    if use_gpu:
+        ollama_url = _rewrite_url(config.ollama_gpu_url, "forge-ollama-gpu-proxy")
+    else:
+        ollama_url = _rewrite_url(config.ollama_cpu_url, "forge-ollama-proxy")
     forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
 
     container = client.containers.run(

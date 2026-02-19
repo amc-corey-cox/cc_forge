@@ -29,7 +29,7 @@ from cc_forge.git import (
 )
 
 
-def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claude") -> None:
+def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claude", use_gpu: bool = False) -> None:
     """Run the full forge session flow."""
     path = Path(repo_path).resolve()
 
@@ -88,13 +88,15 @@ def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claud
                     click.echo("Warning: could not restore forgejo remote URL.", err=True)
 
     # 7. Launch agent container
-    click.echo(f"Starting {agent} agent container...")
+    ollama_mode = "GPU (Vulkan)" if use_gpu else "CPU"
+    click.echo(f"Starting {agent} agent container (Ollama: {ollama_mode})...")
     container_id = run_agent_container(
         config,
         repo_url=clone_url,
         branch=branch,
         repo_name=repo_name,
         agent=agent,
+        use_gpu=use_gpu,
     )
     click.echo(f"Container started. Launching {agent}...")
     click.echo("---")

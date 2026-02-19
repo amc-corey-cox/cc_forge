@@ -9,28 +9,32 @@ from cc_forge import __version__
 
 @click.group(invoke_without_command=True)
 @click.version_option(__version__, prog_name="forge")
+@click.option("--gpu", is_flag=True, help="Use Vulkan GPU Ollama service instead of CPU.")
 @click.pass_context
-def main(ctx: click.Context) -> None:
+def main(ctx: click.Context, gpu: bool) -> None:
     """CC Forge — Local-first AI development forge.
 
     Run `forge` with no arguments to start an interactive agent session
     in the current git repository.
     """
+    ctx.ensure_object(dict)
+    ctx.obj["gpu"] = gpu
     if ctx.invoked_subcommand is None:
-        ctx.invoke(run)
+        ctx.invoke(run, gpu=gpu)
 
 
 @main.command()
 @click.option("--repo", default=".", help="Path to git repository (default: current directory).")
 @click.option("--agent", default="claude", type=click.Choice(["claude", "aider"]),
               help="Agent to use inside the container.")
-def run(repo: str, agent: str) -> None:
+@click.option("--gpu", is_flag=True, help="Use Vulkan GPU Ollama service instead of CPU.")
+def run(repo: str, agent: str, gpu: bool) -> None:
     """Start an interactive agent session."""
     from cc_forge.config import load_config
     from cc_forge.session import start_session
 
     cfg = load_config()
-    start_session(cfg, repo_path=repo, agent=agent)
+    start_session(cfg, repo_path=repo, agent=agent, use_gpu=gpu)
 
 
 @main.command()
