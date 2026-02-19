@@ -32,18 +32,6 @@ git clone --branch "${REPO_BRANCH:-main}" "$REPO_URL" /workspace/repo 2>&1 || {
 
 cd /workspace/repo
 
-# Patch Claude Code to remove ?beta=true query params that Ollama rejects.
-# The env var CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS doesn't strip query params
-# in all versions, so we patch the JS directly.
-CLAUDE_CLI="$(which claude 2>/dev/null || true)"
-if [ -n "$CLAUDE_CLI" ]; then
-    CLAUDE_JS="$(dirname "$(dirname "$CLAUDE_CLI")")/lib/node_modules/@anthropic-ai/claude-code/cli.js"
-    if [ -f "$CLAUDE_JS" ]; then
-        sed -i 's/?beta=true//g' "$CLAUDE_JS"
-        echo "Patched Claude Code: removed ?beta=true query params."
-    fi
-fi
-
 echo "Repository cloned. Ready for agent."
 echo ""
 
