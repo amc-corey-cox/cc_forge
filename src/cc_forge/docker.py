@@ -106,9 +106,9 @@ def run_agent_container(
     # Rewrite URLs for container network: localhost → Docker service names
     clone_url = _rewrite_url(repo_url, "forge-forgejo")
     if use_gpu:
-        ollama_url = _rewrite_url(config.ollama_gpu_url, "forge-ollama-gpu-proxy")
+        ollama_url = _rewrite_url(config.ollama_gpu_url, "host.docker.internal")
     else:
-        ollama_url = _rewrite_url(config.ollama_cpu_url, "forge-ollama-proxy")
+        ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
     forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
 
     container = client.containers.run(
@@ -132,6 +132,7 @@ def run_agent_container(
             "MAX_THINKING_TOKENS": "0",
         },
         labels={"forge.role": "agent", "forge.repo": repo_name},
+        extra_hosts={"host.docker.internal": "host-gateway"},
     )
     return container.id
 
