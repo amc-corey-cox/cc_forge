@@ -28,7 +28,14 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # Patch Claude Code: strip ?beta=true query params that Ollama rejects with 404/500.
 # CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 doesn't reliably strip query params in all versions.
-RUN sed -i 's/?beta=true//g' /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js
+# NOTE: This sed-based patch is a temporary workaround pending upstream support for
+# configurable query parameter stripping. It relies on the current CLI path and layout
+# and may need to be updated if @anthropic-ai/claude-code changes in future versions.
+RUN sed -i 's/?beta=true//g' /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js && \
+    if grep -q '?beta=true' /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js; then \
+        echo "Error: Claude Code beta query parameter patch failed; CLI layout or path may have changed." >&2; \
+        exit 1; \
+    fi
 
 # Create non-root user
 RUN useradd -m -s /bin/bash agent && \
