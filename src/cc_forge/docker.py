@@ -102,14 +102,11 @@ def run_agent_container(
 
     container_name = f"{CONTAINER_PREFIX}{repo_name}-{int(time.time())}"
 
-    # Rewrite URLs for container network: localhost → Docker service names or host gateway.
-    # NOTE: Ollama is reached directly on the host via `host.docker.internal`
-    # rather than through the socat proxy containers. This bypass avoids the
-    # ~5 minute Docker TCP idle timeout that breaks long-running CPU prefills.
-    # The socat proxies remain available for legacy/manual configurations.
-    # Changes to this routing should be reflected in DESIGN.md and docker/README.md.
+    # Rewrite URLs for container network: localhost → Docker service names.
+    # Ollama goes through socat proxies (forge-ollama-proxy) which handle
+    # the host.docker.internal forwarding with a 1-hour inactivity timeout.
     clone_url = _rewrite_url(repo_url, "forge-forgejo")
-    ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
+    ollama_url = _rewrite_url(config.ollama_cpu_url, "forge-ollama-proxy")
     forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
 
     container = client.containers.run(
@@ -133,7 +130,6 @@ def run_agent_container(
             "MAX_THINKING_TOKENS": "0",
         },
         labels={"forge.role": "agent", "forge.repo": repo_name},
-        extra_hosts={"host.docker.internal": "host-gateway"},
     )
     return container.id
 
