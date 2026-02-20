@@ -1,4 +1,5 @@
 """Tests for docker module helpers."""
+from __future__ import annotations
 
 from cc_forge.docker import _rewrite_url
 
@@ -27,3 +28,11 @@ class TestRewriteUrl:
     def test_host_docker_internal(self):
         assert _rewrite_url("http://localhost:11434", "host.docker.internal") == \
             "http://host.docker.internal:11434"
+
+    def test_https_preserved(self):
+        assert _rewrite_url("https://localhost:11434", "forge-ollama-proxy") == \
+            "https://forge-ollama-proxy:11434"
+
+    def test_query_params_preserved(self):
+        assert _rewrite_url("http://localhost:3000/api?token=abc", "forge-forgejo") == \
+            "http://forge-forgejo:3000/api?token=abc"
