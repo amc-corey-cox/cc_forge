@@ -18,7 +18,7 @@ services:
     image: alpine/socat:latest
     container_name: forge-ollama-proxy
     restart: unless-stopped
-    command: TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434
+    command: TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434,keepalive,keepidle=60,keepintvl=30,keepcnt=5
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -28,7 +28,7 @@ services:
     image: alpine/socat:latest
     container_name: forge-ollama-gpu-proxy
     restart: unless-stopped
-    command: TCP-LISTEN:11435,fork,reuseaddr TCP:host.docker.internal:11435
+    command: TCP-LISTEN:11435,fork,reuseaddr TCP:host.docker.internal:11435,keepalive,keepidle=60,keepintvl=30,keepcnt=5
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
