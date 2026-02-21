@@ -93,7 +93,7 @@ def start_session(
                     click.echo("Warning: could not restore forgejo remote URL.", err=True)
 
     # 7. Launch agent container
-    backend = "Claude API" if claude_passthrough else "local Ollama"
+    backend = "Claude API" if claude_passthrough and agent == "claude" else "local Ollama"
     click.echo(f"Starting {agent} agent container ({backend})...")
     container_id = run_agent_container(
         config,

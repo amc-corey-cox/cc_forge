@@ -1,10 +1,28 @@
 """Tests for docker module helpers."""
 from __future__ import annotations
 
-import os
 import pytest
 
-from cc_forge.docker import _rewrite_url, _ollama_environment, _claude_environment
+from cc_forge.config import ForgeConfig
+from cc_forge.docker import (
+    _rewrite_url,
+    _ollama_environment,
+    _claude_environment,
+    _build_agent_cmd,
+)
+
+
+def _make_config(**kwargs) -> ForgeConfig:
+    defaults = dict(
+        ollama_cpu_url="http://localhost:11434",
+        forgejo_url="http://localhost:3000",
+        forgejo_token="test",
+        agent_image="test",
+        claude_model="test-model",
+        compose_file="",
+    )
+    defaults.update(kwargs)
+    return ForgeConfig(**defaults)
 
 
 class TestRewriteUrl:
@@ -43,15 +61,7 @@ class TestRewriteUrl:
 
 class TestOllamaEnvironment:
     def test_sets_ollama_vars(self):
-        from cc_forge.config import ForgeConfig
-        config = ForgeConfig(
-            ollama_cpu_url="http://localhost:11434",
-            forgejo_url="http://localhost:3000",
-            forgejo_token="test",
-            agent_image="test",
-            claude_model="test-model",
-            compose_file="",
-        )
+        config = _make_config()
         env = _ollama_environment(config)
         assert env["ANTHROPIC_AUTH_TOKEN"] == "ollama"
         assert "host.docker.internal" in env["ANTHROPIC_BASE_URL"]
@@ -65,11 +75,38 @@ class TestClaudeEnvironment:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key-123")
         env = _claude_environment()
         assert env["ANTHROPIC_API_KEY"] == "sk-test-key-123"
-        assert "ANTHROPIC_BASE_URL" not in env
-        assert "ANTHROPIC_AUTH_TOKEN" not in env
         assert "DISABLE_PROMPT_CACHING" not in env
+
+    def test_overrides_dockerfile_defaults(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key-123")
+        env = _claude_environment()
+        assert env["ANTHROPIC_BASE_URL"] == ""
+        assert env["ANTHROPIC_AUTH_TOKEN"] == ""
 
     def test_raises_without_api_key(self, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY not set"):
             _claude_environment()
+
+
+class TestBuildAgentCmd:
+    def test_claude_ollama(self):
+        config = _make_config(claude_model="qwen3-coder-32k")
+        cmd = _build_agent_cmd("claude", config, claude_passthrough=False)
+        assert cmd == ["claude", "--dangerously-skip-permissions", "--model", "qwen3-coder-32k"]
+
+    def test_claude_passthrough(self):
+        config = _make_config(claude_model="qwen3-coder-32k")
+        cmd = _build_agent_cmd("claude", config, claude_passthrough=True)
+        assert cmd == ["claude", "--dangerously-skip-permissions"]
+        assert "--model" not in cmd
+
+    def test_aider(self):
+        config = _make_config()
+        cmd = _build_agent_cmd("aider", config)
+        assert cmd == ["aider", "--model", "ollama/llama3.1"]
+
+    def test_fallback_shell(self):
+        config = _make_config()
+        cmd = _build_agent_cmd("bash", config)
+        assert cmd == ["/bin/bash"]

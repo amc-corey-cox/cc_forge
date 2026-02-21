@@ -31,6 +31,9 @@ def run(repo: str, agent: str, claude_passthrough: bool) -> None:
     from cc_forge.config import load_config
     from cc_forge.session import start_session
 
+    if claude_passthrough and agent != "claude":
+        raise click.UsageError("--claude can only be used with --agent claude")
+
     cfg = load_config()
     start_session(cfg, repo_path=repo, agent=agent, claude_passthrough=claude_passthrough)
 

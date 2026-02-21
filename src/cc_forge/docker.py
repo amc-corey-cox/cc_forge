@@ -111,10 +111,13 @@ def _claude_environment() -> dict[str, str]:
     if not api_key:
         raise RuntimeError(
             "ANTHROPIC_API_KEY not set. Required for --claude pass-through mode.\n"
-            "Set it in your environment or ~/.config/forge/config.env"
+            "Set it in your shell environment before running this command."
         )
     return {
         "ANTHROPIC_API_KEY": api_key,
+        # Override Dockerfile defaults that would route to Ollama
+        "ANTHROPIC_BASE_URL": "",
+        "ANTHROPIC_AUTH_TOKEN": "",
     }
 
 
@@ -189,6 +192,19 @@ def wait_for_ready(container_id: str, timeout: int = 60) -> None:
     raise RuntimeError(f"Timed out waiting for repo clone.\nContainer logs:\n{logs}")
 
 
+def _build_agent_cmd(agent: str, config: ForgeConfig, claude_passthrough: bool = False) -> list[str]:
+    """Build the command to run inside the agent container."""
+    if agent == "claude":
+        cmd = ["claude", "--dangerously-skip-permissions"]
+        if not claude_passthrough:
+            cmd += ["--model", config.claude_model]
+    elif agent == "aider":
+        cmd = ["aider", "--model", "ollama/llama3.1"]
+    else:
+        cmd = ["/bin/bash"]
+    return cmd
+
+
 def exec_agent(
     container_id: str,
     agent: str,
@@ -198,14 +214,7 @@ def exec_agent(
     """Exec the agent interactively inside a running container. Returns exit code."""
     wait_for_ready(container_id)
 
-    if agent == "claude":
-        cmd = ["claude", "--dangerously-skip-permissions"]
-        if not claude_passthrough:
-            cmd += ["--model", config.claude_model]
-    elif agent == "aider":
-        cmd = ["aider", "--model", "ollama/llama3.1"]
-    else:
-        cmd = ["/bin/bash"]
+    cmd = _build_agent_cmd(agent, config, claude_passthrough)
 
     docker_cmd = ["docker", "exec", "-w", "/workspace/repo"]
     if sys.stdin.isatty():
