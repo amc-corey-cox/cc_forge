@@ -115,13 +115,18 @@ def _claude_credentials_path() -> Path:
     return cred_path
 
 
+AGENT_UID = 1000  # Matches Dockerfile: useradd -u 1000 agent
+
+
 def _add_tar_file(tar, name: str, data: bytes, mode: int = 0o644) -> None:
-    """Add a file to a tar archive (owned by root; chowned after container start)."""
+    """Add a file to a tar archive owned by the agent user."""
     import io
     import tarfile as _tarfile
 
     info = _tarfile.TarInfo(name=name)
     info.size = len(data)
+    info.uid = AGENT_UID
+    info.gid = AGENT_UID
     info.mode = mode
     tar.addfile(info, io.BytesIO(data))
 
@@ -209,10 +214,6 @@ def run_agent_container(
         _copy_claude_config(container, config)
 
     container.start()
-
-    if claude_passthrough:
-        container.exec_run("chown -R agent:agent /home/agent/.claude", user="root")
-
     return container.id
 
 
@@ -276,6 +277,30 @@ def exec_agent(
 
     result = subprocess.run(docker_cmd)
     return result.returncode
+
+
+def save_claude_credentials(container_id: str) -> None:
+    """Copy refreshed OAuth credentials from container back to the host."""
+    import io
+    import tarfile
+
+    client = _docker_client()
+    try:
+        container = client.containers.get(container_id)
+        bits, _ = container.get_archive("/home/agent/.claude/.credentials.json")
+        buf = io.BytesIO()
+        for chunk in bits:
+            buf.write(chunk)
+        buf.seek(0)
+
+        with tarfile.open(fileobj=buf, mode="r") as tar:
+            member = tar.getmembers()[0]
+            f = tar.extractfile(member)
+            if f:
+                host_cred = Path.home() / ".claude" / ".credentials.json"
+                host_cred.write_bytes(f.read())
+    except Exception:
+        pass  # Best-effort; don't fail the session over this
 
 
 def cleanup_container(container_id: str) -> None:
