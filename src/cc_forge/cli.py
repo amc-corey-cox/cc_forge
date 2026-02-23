@@ -24,13 +24,18 @@ def main(ctx: click.Context) -> None:
 @click.option("--repo", default=".", help="Path to git repository (default: current directory).")
 @click.option("--agent", default="claude", type=click.Choice(["claude", "aider"]),
               help="Agent to use inside the container.")
-def run(repo: str, agent: str) -> None:
+@click.option("--claude", "claude_passthrough", is_flag=True,
+              help="Use your Claude API account instead of local Ollama.")
+def run(repo: str, agent: str, claude_passthrough: bool) -> None:
     """Start an interactive agent session."""
     from cc_forge.config import load_config
     from cc_forge.session import start_session
 
+    if claude_passthrough and agent != "claude":
+        raise click.UsageError("--claude can only be used with --agent claude")
+
     cfg = load_config()
-    start_session(cfg, repo_path=repo, agent=agent)
+    start_session(cfg, repo_path=repo, agent=agent, claude_passthrough=claude_passthrough)
 
 
 @main.command()

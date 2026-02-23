@@ -29,7 +29,12 @@ from cc_forge.git import (
 )
 
 
-def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claude") -> None:
+def start_session(
+    config: ForgeConfig,
+    repo_path: str = ".",
+    agent: str = "claude",
+    claude_passthrough: bool = False,
+) -> None:
     """Run the full forge session flow."""
     path = Path(repo_path).resolve()
 
@@ -88,20 +93,22 @@ def start_session(config: ForgeConfig, repo_path: str = ".", agent: str = "claud
                     click.echo("Warning: could not restore forgejo remote URL.", err=True)
 
     # 7. Launch agent container
-    click.echo(f"Starting {agent} agent container...")
+    backend = "Claude API" if claude_passthrough and agent == "claude" else "local Ollama"
+    click.echo(f"Starting {agent} agent container ({backend})...")
     container_id = run_agent_container(
         config,
         repo_url=clone_url,
         branch=branch,
         repo_name=repo_name,
         agent=agent,
+        claude_passthrough=claude_passthrough,
     )
     click.echo(f"Container started. Launching {agent}...")
     click.echo("---")
 
     # 8. Exec agent interactively and wait
     try:
-        exec_agent(container_id, agent, config)
+        exec_agent(container_id, agent, config, claude_passthrough=claude_passthrough)
     finally:
         click.echo("\n--- Session ended. Cleaning up container...")
         cleanup_container(container_id)

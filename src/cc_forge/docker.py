@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -89,12 +90,44 @@ def ensure_agent_image_built(config: ForgeConfig) -> str:
     return image_tag
 
 
+def _ollama_environment(config: ForgeConfig) -> dict[str, str]:
+    """Environment variables for local Ollama backend."""
+    ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
+    return {
+        "OLLAMA_HOST": ollama_url,
+        "ANTHROPIC_AUTH_TOKEN": "ollama",
+        "ANTHROPIC_BASE_URL": ollama_url,
+        "DISABLE_PROMPT_CACHING": "true",
+        "API_TIMEOUT_MS": "3600000",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+        "MAX_THINKING_TOKENS": "0",
+    }
+
+
+def _claude_environment() -> dict[str, str]:
+    """Environment variables for Claude API pass-through."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY not set. Required for --claude pass-through mode.\n"
+            "Set it in your shell environment before running this command."
+        )
+    return {
+        "ANTHROPIC_API_KEY": api_key,
+        # Override Dockerfile defaults that would route to Ollama
+        "ANTHROPIC_BASE_URL": "",
+        "ANTHROPIC_AUTH_TOKEN": "",
+    }
+
+
 def run_agent_container(
     config: ForgeConfig,
     repo_url: str,
     branch: str,
     repo_name: str,
     agent: str = "claude",
+    claude_passthrough: bool = False,
 ) -> str:
     """Launch an agent container on forge-network. Returns container ID."""
     client = _docker_client()
@@ -103,33 +136,28 @@ def run_agent_container(
     container_name = f"{CONTAINER_PREFIX}{repo_name}-{int(time.time())}"
 
     # Rewrite URLs for container network: localhost → Docker service names.
-    # Ollama bypasses the socat proxies and connects directly to the host
-    # via host.docker.internal — socat drops idle connections during long
-    # CPU prefills (~5 min). Requires OLLAMA_HOST=0.0.0.0 on the host.
     clone_url = _rewrite_url(repo_url, "forge-forgejo")
-    ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
     forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
+
+    environment = {
+        "FORGEJO_URL": forgejo_url,
+        "FORGEJO_TOKEN": config.forgejo_token,
+        "REPO_URL": clone_url,
+        "REPO_BRANCH": branch,
+        "FORGE_AGENT": agent,
+    }
+
+    if claude_passthrough:
+        environment.update(_claude_environment())
+    else:
+        environment.update(_ollama_environment(config))
 
     container = client.containers.run(
         image_tag,
         detach=True,
         name=container_name,
         network="forge-network",
-        environment={
-            "FORGEJO_URL": forgejo_url,
-            "FORGEJO_TOKEN": config.forgejo_token,
-            "REPO_URL": clone_url,
-            "REPO_BRANCH": branch,
-            "FORGE_AGENT": agent,
-            "OLLAMA_HOST": ollama_url,
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_BASE_URL": ollama_url,
-            "DISABLE_PROMPT_CACHING": "true",
-            "API_TIMEOUT_MS": "3600000",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-            "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-            "MAX_THINKING_TOKENS": "0",
-        },
+        environment=environment,
         labels={"forge.role": "agent", "forge.repo": repo_name},
         extra_hosts={"host.docker.internal": "host-gateway"},
     )
@@ -164,16 +192,29 @@ def wait_for_ready(container_id: str, timeout: int = 60) -> None:
     raise RuntimeError(f"Timed out waiting for repo clone.\nContainer logs:\n{logs}")
 
 
-def exec_agent(container_id: str, agent: str, config: ForgeConfig) -> int:
-    """Exec the agent interactively inside a running container. Returns exit code."""
-    wait_for_ready(container_id)
-
+def _build_agent_cmd(agent: str, config: ForgeConfig, claude_passthrough: bool = False) -> list[str]:
+    """Build the command to run inside the agent container."""
     if agent == "claude":
-        cmd = ["claude", "--dangerously-skip-permissions", "--model", config.claude_model]
+        cmd = ["claude", "--dangerously-skip-permissions"]
+        if not claude_passthrough:
+            cmd += ["--model", config.claude_model]
     elif agent == "aider":
         cmd = ["aider", "--model", "ollama/llama3.1"]
     else:
         cmd = ["/bin/bash"]
+    return cmd
+
+
+def exec_agent(
+    container_id: str,
+    agent: str,
+    config: ForgeConfig,
+    claude_passthrough: bool = False,
+) -> int:
+    """Exec the agent interactively inside a running container. Returns exit code."""
+    wait_for_ready(container_id)
+
+    cmd = _build_agent_cmd(agent, config, claude_passthrough)
 
     docker_cmd = ["docker", "exec", "-w", "/workspace/repo"]
     if sys.stdin.isatty():
