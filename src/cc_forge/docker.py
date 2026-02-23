@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import time
@@ -105,16 +104,54 @@ def _ollama_environment(config: ForgeConfig) -> dict[str, str]:
     }
 
 
+def _claude_credentials_path() -> Path:
+    """Return the path to local Claude OAuth credentials."""
+    cred_path = Path.home() / ".claude" / ".credentials.json"
+    if not cred_path.is_file():
+        raise RuntimeError(
+            "Claude credentials not found at ~/.claude/.credentials.json\n"
+            "Run 'claude' locally first to authenticate via OAuth."
+        )
+    return cred_path
+
+
+def _copy_claude_config(container, config: ForgeConfig) -> None:
+    """Copy Claude OAuth credentials and forge agent CLAUDE.md into the container."""
+    import io
+    import tarfile
+
+    cred_path = _claude_credentials_path()
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        # OAuth credentials
+        cred_data = cred_path.read_bytes()
+        info = tarfile.TarInfo(name=".claude/.credentials.json")
+        info.size = len(cred_data)
+        info.uid = 1000  # agent user
+        info.gid = 1000
+        info.mode = 0o600
+        tar.addfile(info, io.BytesIO(cred_data))
+
+        # Forge-specific agent CLAUDE.md (from docker/ directory, not host ~/.claude/)
+        docker_dir = Path(config.compose_file).parent
+        agent_claude_md = docker_dir / "CLAUDE.md"
+        if agent_claude_md.is_file():
+            md_data = agent_claude_md.read_bytes()
+            md_info = tarfile.TarInfo(name=".claude/CLAUDE.md")
+            md_info.size = len(md_data)
+            md_info.uid = 1000
+            md_info.gid = 1000
+            md_info.mode = 0o644
+            tar.addfile(md_info, io.BytesIO(md_data))
+    buf.seek(0)
+
+    container.put_archive("/home/agent", buf)
+
+
 def _claude_environment() -> dict[str, str]:
     """Environment variables for Claude API pass-through."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY not set. Required for --claude pass-through mode.\n"
-            "Set it in your shell environment before running this command."
-        )
     return {
-        "ANTHROPIC_API_KEY": api_key,
         # Override Dockerfile defaults that would route to Ollama
         "ANTHROPIC_BASE_URL": "",
         "ANTHROPIC_AUTH_TOKEN": "",
@@ -152,15 +189,19 @@ def run_agent_container(
     else:
         environment.update(_ollama_environment(config))
 
-    container = client.containers.run(
+    container = client.containers.create(
         image_tag,
-        detach=True,
         name=container_name,
         network="forge-network",
         environment=environment,
         labels={"forge.role": "agent", "forge.repo": repo_name},
         extra_hosts={"host.docker.internal": "host-gateway"},
     )
+
+    if claude_passthrough:
+        _copy_claude_config(container, config)
+
+    container.start()
     return container.id
 
 
