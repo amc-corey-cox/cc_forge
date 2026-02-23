@@ -116,14 +116,12 @@ def _claude_credentials_path() -> Path:
 
 
 def _add_tar_file(tar, name: str, data: bytes, mode: int = 0o644) -> None:
-    """Add a file to a tar archive owned by the agent user (uid/gid 1000)."""
+    """Add a file to a tar archive (owned by root; chowned after container start)."""
     import io
     import tarfile as _tarfile
 
     info = _tarfile.TarInfo(name=name)
     info.size = len(data)
-    info.uid = 1000  # agent user
-    info.gid = 1000
     info.mode = mode
     tar.addfile(info, io.BytesIO(data))
 
@@ -137,14 +135,6 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
-        # .claude/ directory with correct ownership
-        dir_info = tarfile.TarInfo(name=".claude")
-        dir_info.type = tarfile.DIRTYPE
-        dir_info.uid = 1000
-        dir_info.gid = 1000
-        dir_info.mode = 0o755
-        tar.addfile(dir_info)
-
         # OAuth credentials
         _add_tar_file(tar, ".claude/.credentials.json",
                       cred_path.read_bytes(), mode=0o600)
@@ -219,6 +209,10 @@ def run_agent_container(
         _copy_claude_config(container, config)
 
     container.start()
+
+    if claude_passthrough:
+        container.exec_run("chown -R agent:agent /home/agent/.claude", user="root")
+
     return container.id
 
 
