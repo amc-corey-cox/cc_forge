@@ -196,6 +196,8 @@ def run_agent_container(
         environment=environment,
         labels={"forge.role": "agent", "forge.repo": repo_name},
         extra_hosts={"host.docker.internal": "host-gateway"},
+        stdin_open=True,
+        tty=True,
     )
 
     if claude_passthrough:
