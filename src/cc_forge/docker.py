@@ -115,8 +115,21 @@ def _claude_credentials_path() -> Path:
     return cred_path
 
 
+def _add_tar_file(tar, name: str, data: bytes, mode: int = 0o644) -> None:
+    """Add a file to a tar archive owned by the agent user (uid/gid 1000)."""
+    import io
+    import tarfile as _tarfile
+
+    info = _tarfile.TarInfo(name=name)
+    info.size = len(data)
+    info.uid = 1000  # agent user
+    info.gid = 1000
+    info.mode = mode
+    tar.addfile(info, io.BytesIO(data))
+
+
 def _copy_claude_config(container, config: ForgeConfig) -> None:
-    """Copy Claude OAuth credentials and forge agent CLAUDE.md into the container."""
+    """Copy Claude OAuth credentials and forge agent config into the container."""
     import io
     import tarfile
 
@@ -124,26 +137,28 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
+        # .claude/ directory with correct ownership
+        dir_info = tarfile.TarInfo(name=".claude")
+        dir_info.type = tarfile.DIRTYPE
+        dir_info.uid = 1000
+        dir_info.gid = 1000
+        dir_info.mode = 0o755
+        tar.addfile(dir_info)
+
         # OAuth credentials
-        cred_data = cred_path.read_bytes()
-        info = tarfile.TarInfo(name=".claude/.credentials.json")
-        info.size = len(cred_data)
-        info.uid = 1000  # agent user
-        info.gid = 1000
-        info.mode = 0o600
-        tar.addfile(info, io.BytesIO(cred_data))
+        _add_tar_file(tar, ".claude/.credentials.json",
+                      cred_path.read_bytes(), mode=0o600)
+
+        # Settings to skip first-run onboarding (theme picker)
+        _add_tar_file(tar, ".claude/settings.json",
+                      b'{"hasCompletedOnboarding":true}')
 
         # Forge-specific agent CLAUDE.md (from docker/ directory, not host ~/.claude/)
         docker_dir = Path(config.compose_file).parent
         agent_claude_md = docker_dir / "CLAUDE.md"
         if agent_claude_md.is_file():
-            md_data = agent_claude_md.read_bytes()
-            md_info = tarfile.TarInfo(name=".claude/CLAUDE.md")
-            md_info.size = len(md_data)
-            md_info.uid = 1000
-            md_info.gid = 1000
-            md_info.mode = 0o644
-            tar.addfile(md_info, io.BytesIO(md_data))
+            _add_tar_file(tar, ".claude/CLAUDE.md",
+                          agent_claude_md.read_bytes())
     buf.seek(0)
 
     container.put_archive("/home/agent", buf)
