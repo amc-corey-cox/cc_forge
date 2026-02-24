@@ -104,15 +104,23 @@ def _ollama_environment(config: ForgeConfig) -> dict[str, str]:
     }
 
 
+FORGE_CLAUDE_STATE = Path.home() / ".config" / "forge" / "claude-state"
+
+_CLAUDE_STATE_FILES = [".credentials.json", "settings.json"]
+
+
 def _claude_credentials_path() -> Path:
-    """Return the path to local Claude OAuth credentials."""
-    cred_path = Path.home() / ".claude" / ".credentials.json"
-    if not cred_path.is_file():
-        raise RuntimeError(
-            "Claude credentials not found at ~/.claude/.credentials.json\n"
-            "Run 'claude' locally first to authenticate via OAuth."
-        )
-    return cred_path
+    """Return the path to Claude OAuth credentials (saved state or host)."""
+    saved = FORGE_CLAUDE_STATE / ".credentials.json"
+    if saved.is_file():
+        return saved
+    host = Path.home() / ".claude" / ".credentials.json"
+    if host.is_file():
+        return host
+    raise RuntimeError(
+        "Claude credentials not found.\n"
+        "Run 'claude' locally first to authenticate via OAuth."
+    )
 
 
 AGENT_UID = 1000  # Matches Dockerfile: useradd -u 1000 agent
@@ -152,9 +160,13 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
         _add_tar_file(tar, ".claude/.credentials.json",
                       cred_path.read_bytes(), mode=0o600)
 
-        # Settings to skip first-run onboarding (theme picker)
-        _add_tar_file(tar, ".claude/settings.json",
-                      b'{"hasCompletedOnboarding":true}')
+        # Settings: use saved container state if available, otherwise defaults
+        saved_settings = FORGE_CLAUDE_STATE / "settings.json"
+        if saved_settings.is_file():
+            settings_data = saved_settings.read_bytes()
+        else:
+            settings_data = b'{"hasCompletedOnboarding":true}'
+        _add_tar_file(tar, ".claude/settings.json", settings_data)
 
         # Forge-specific agent CLAUDE.md (from docker/ directory, not host ~/.claude/)
         docker_dir = Path(config.compose_file).parent
@@ -288,25 +300,29 @@ def exec_agent(
 
 
 def save_claude_credentials(container_id: str) -> None:
-    """Copy refreshed OAuth credentials from container back to the host."""
+    """Save Claude state from container back to host for reuse in future sessions."""
     import io
     import tarfile
 
     client = _docker_client()
+    FORGE_CLAUDE_STATE.mkdir(parents=True, exist_ok=True)
+
     try:
         container = client.containers.get(container_id)
-        bits, _ = container.get_archive("/home/agent/.claude/.credentials.json")
-        buf = io.BytesIO()
-        for chunk in bits:
-            buf.write(chunk)
-        buf.seek(0)
-
-        with tarfile.open(fileobj=buf, mode="r") as tar:
-            member = tar.getmembers()[0]
-            f = tar.extractfile(member)
-            if f:
-                host_cred = Path.home() / ".claude" / ".credentials.json"
-                host_cred.write_bytes(f.read())
+        for filename in _CLAUDE_STATE_FILES:
+            try:
+                bits, _ = container.get_archive(f"/home/agent/.claude/{filename}")
+                buf = io.BytesIO()
+                for chunk in bits:
+                    buf.write(chunk)
+                buf.seek(0)
+                with tarfile.open(fileobj=buf, mode="r") as tar:
+                    member = tar.getmembers()[0]
+                    f = tar.extractfile(member)
+                    if f:
+                        (FORGE_CLAUDE_STATE / filename).write_bytes(f.read())
+            except Exception:
+                continue  # Skip files that don't exist in the container
     except Exception:
         pass  # Best-effort; don't fail the session over this
 
