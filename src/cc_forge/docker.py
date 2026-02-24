@@ -140,6 +140,14 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
+        # .claude/ directory (must be explicit so agent owns it and can write)
+        dir_info = tarfile.TarInfo(name=".claude/")
+        dir_info.type = tarfile.DIRTYPE
+        dir_info.uid = AGENT_UID
+        dir_info.gid = AGENT_UID
+        dir_info.mode = 0o755
+        tar.addfile(dir_info)
+
         # OAuth credentials
         _add_tar_file(tar, ".claude/.credentials.json",
                       cred_path.read_bytes(), mode=0o600)
