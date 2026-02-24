@@ -185,6 +185,8 @@ def _claude_environment() -> dict[str, str]:
         # Override Dockerfile defaults that would route to Ollama
         "ANTHROPIC_BASE_URL": "",
         "ANTHROPIC_AUTH_TOKEN": "",
+        # Container agent can't write to npm global; skip auto-update
+        "CLAUDE_CODE_SKIP_UPDATE": "1",
     }
 
 
@@ -336,6 +338,8 @@ def cleanup_container(container_id: str) -> None:
         container.remove()
     except NotFound:
         pass  # Already removed — nothing to clean up
+    except docker.errors.APIError:
+        pass  # Removal already in progress or other transient error
 
 
 def stop_container(container_id: str) -> None:
