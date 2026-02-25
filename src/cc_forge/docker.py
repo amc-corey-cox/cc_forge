@@ -106,8 +106,6 @@ def _ollama_environment(config: ForgeConfig) -> dict[str, str]:
 
 FORGE_CLAUDE_STATE = Path.home() / ".config" / "forge" / "claude-state"
 
-_CLAUDE_STATE_FILES = [".credentials.json", "settings.json"]
-
 
 def _claude_credentials_path() -> Path:
     """Return the path to Claude OAuth credentials (saved state or host)."""
@@ -139,8 +137,20 @@ def _add_tar_file(tar, name: str, data: bytes, mode: int = 0o644) -> None:
     tar.addfile(info, io.BytesIO(data))
 
 
+def _add_tar_dir(tar, name: str) -> None:
+    """Add a directory entry to a tar archive owned by the agent user."""
+    import tarfile as _tarfile
+
+    info = _tarfile.TarInfo(name=name)
+    info.type = _tarfile.DIRTYPE
+    info.uid = AGENT_UID
+    info.gid = AGENT_UID
+    info.mode = 0o755
+    tar.addfile(info)
+
+
 def _copy_claude_config(container, config: ForgeConfig) -> None:
-    """Copy Claude OAuth credentials and forge agent config into the container."""
+    """Copy saved Claude state into the container."""
     import io
     import tarfile
 
@@ -148,25 +158,28 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
-        # .claude/ directory (must be explicit so agent owns it and can write)
-        dir_info = tarfile.TarInfo(name=".claude/")
-        dir_info.type = tarfile.DIRTYPE
-        dir_info.uid = AGENT_UID
-        dir_info.gid = AGENT_UID
-        dir_info.mode = 0o755
-        tar.addfile(dir_info)
+        _add_tar_dir(tar, ".claude/")
 
-        # OAuth credentials
+        # Walk saved state directory and inject everything
+        if FORGE_CLAUDE_STATE.is_dir():
+            for path in FORGE_CLAUDE_STATE.rglob("*"):
+                rel = path.relative_to(FORGE_CLAUDE_STATE)
+                arc_name = f".claude/{rel}"
+                if path.is_dir():
+                    _add_tar_dir(tar, arc_name + "/")
+                else:
+                    mode = 0o600 if path.name == ".credentials.json" else 0o644
+                    _add_tar_file(tar, arc_name, path.read_bytes(), mode=mode)
+        else:
+            # No saved state — inject minimal defaults
+            _add_tar_file(tar, ".claude/.credentials.json",
+                          cred_path.read_bytes(), mode=0o600)
+            _add_tar_file(tar, ".claude/settings.json",
+                          b'{"hasCompletedOnboarding":true}')
+
+        # Always inject fresh credentials (may be newer than saved state)
         _add_tar_file(tar, ".claude/.credentials.json",
                       cred_path.read_bytes(), mode=0o600)
-
-        # Settings: use saved container state if available, otherwise defaults
-        saved_settings = FORGE_CLAUDE_STATE / "settings.json"
-        if saved_settings.is_file():
-            settings_data = saved_settings.read_bytes()
-        else:
-            settings_data = b'{"hasCompletedOnboarding":true}'
-        _add_tar_file(tar, ".claude/settings.json", settings_data)
 
         # Forge-specific agent CLAUDE.md (from docker/ directory, not host ~/.claude/)
         docker_dir = Path(config.compose_file).parent
@@ -302,29 +315,45 @@ def exec_agent(
 
 
 def save_claude_credentials(container_id: str) -> None:
-    """Save Claude state from container back to host for reuse in future sessions."""
+    """Save full Claude state from container back to host for reuse."""
     import io
+    import shutil
     import tarfile
 
     client = _docker_client()
-    FORGE_CLAUDE_STATE.mkdir(parents=True, exist_ok=True)
+    _SKIP_PATTERNS = {"debug", "session-env", "file-history", "shell-snapshots"}
 
     try:
         container = client.containers.get(container_id)
-        for filename in _CLAUDE_STATE_FILES:
-            try:
-                bits, _ = container.get_archive(f"/home/agent/.claude/{filename}")
-                buf = io.BytesIO()
-                for chunk in bits:
-                    buf.write(chunk)
-                buf.seek(0)
-                with tarfile.open(fileobj=buf, mode="r") as tar:
-                    member = tar.getmembers()[0]
-                    f = tar.extractfile(member)
-                    if f:
-                        (FORGE_CLAUDE_STATE / filename).write_bytes(f.read())
-            except Exception:
-                continue  # Skip files that don't exist in the container
+        bits, _ = container.get_archive("/home/agent/.claude/.")
+        buf = io.BytesIO()
+        for chunk in bits:
+            buf.write(chunk)
+        buf.seek(0)
+
+        # Extract to temp, then swap into place
+        tmp_dir = FORGE_CLAUDE_STATE.parent / "claude-state-tmp"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        tmp_dir.mkdir(parents=True)
+
+        with tarfile.open(fileobj=buf, mode="r") as tar:
+            for member in tar.getmembers():
+                parts = Path(member.name).parts
+                # Skip debug, git repos, and large transient data
+                if any(p in _SKIP_PATTERNS for p in parts):
+                    continue
+                if ".git" in parts:
+                    continue
+                tar.extract(member, tmp_dir, filter="data")
+
+        # Move extracted files into place (strip the top-level directory)
+        extracted = tmp_dir / ".claude" if (tmp_dir / ".claude").exists() else tmp_dir
+        if FORGE_CLAUDE_STATE.exists():
+            shutil.rmtree(FORGE_CLAUDE_STATE)
+        shutil.move(str(extracted), str(FORGE_CLAUDE_STATE))
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
     except Exception:
         pass  # Best-effort; don't fail the session over this
 
