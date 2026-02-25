@@ -187,6 +187,12 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
         if agent_claude_md.is_file():
             _add_tar_file(tar, ".claude/CLAUDE.md",
                           agent_claude_md.read_bytes())
+
+        # $HOME/.claude.json — main state file (userID, account, feature flags)
+        saved_claude_json = FORGE_CLAUDE_STATE / ".claude.json"
+        if saved_claude_json.is_file():
+            _add_tar_file(tar, ".claude.json",
+                          saved_claude_json.read_bytes(), mode=0o600)
     buf.seek(0)
 
     container.put_archive("/home/agent", buf)
@@ -354,6 +360,22 @@ def save_claude_credentials(container_id: str) -> None:
         shutil.move(str(extracted), str(FORGE_CLAUDE_STATE))
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
+
+        # Also save $HOME/.claude.json (main state file with userID/account)
+        try:
+            bits2, _ = container.get_archive("/home/agent/.claude.json")
+            buf2 = io.BytesIO()
+            for chunk in bits2:
+                buf2.write(chunk)
+            buf2.seek(0)
+            with tarfile.open(fileobj=buf2, mode="r") as tar:
+                member = tar.getmembers()[0]
+                f = tar.extractfile(member)
+                if f:
+                    (FORGE_CLAUDE_STATE / ".claude.json").write_bytes(f.read())
+        except Exception:
+            pass  # May not exist on first run
+
     except Exception:
         pass  # Best-effort; don't fail the session over this
 
