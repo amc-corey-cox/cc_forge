@@ -12,6 +12,7 @@ from cc_forge.docker import (
     ensure_infrastructure_running,
     exec_agent,
     run_agent_container,
+    save_claude_credentials,
 )
 
 from cc_forge.forgejo import ForgejoClient
@@ -110,6 +111,8 @@ def start_session(
     try:
         exec_agent(container_id, agent, config, claude_passthrough=claude_passthrough)
     finally:
+        if claude_passthrough and not config.claude_api_key:
+            save_claude_credentials(container_id)
         click.echo("\n--- Session ended. Cleaning up container...")
         cleanup_container(container_id)
 

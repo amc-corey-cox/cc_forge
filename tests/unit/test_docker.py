@@ -8,6 +8,7 @@ from cc_forge.docker import (
     _rewrite_url,
     _ollama_environment,
     _claude_environment,
+    _claude_credentials_path,
     _build_agent_cmd,
 )
 
@@ -19,6 +20,7 @@ def _make_config(**kwargs) -> ForgeConfig:
         forgejo_token="test",
         agent_image="test",
         claude_model="test-model",
+        claude_api_key="",
         compose_file="",
     )
     defaults.update(kwargs)
@@ -71,22 +73,41 @@ class TestOllamaEnvironment:
 
 
 class TestClaudeEnvironment:
-    def test_passes_api_key(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key-123")
-        env = _claude_environment()
-        assert env["ANTHROPIC_API_KEY"] == "sk-test-key-123"
-        assert "DISABLE_PROMPT_CACHING" not in env
-
-    def test_overrides_dockerfile_defaults(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key-123")
-        env = _claude_environment()
+    def test_overrides_dockerfile_defaults(self):
+        config = _make_config()
+        env = _claude_environment(config)
         assert env["ANTHROPIC_BASE_URL"] == ""
         assert env["ANTHROPIC_AUTH_TOKEN"] == ""
 
-    def test_raises_without_api_key(self, monkeypatch):
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY not set"):
-            _claude_environment()
+    def test_no_api_key_by_default(self):
+        config = _make_config()
+        env = _claude_environment(config)
+        assert "ANTHROPIC_API_KEY" not in env
+
+    def test_passes_api_key_when_set(self):
+        config = _make_config(claude_api_key="sk-test-key")
+        env = _claude_environment(config)
+        assert env["ANTHROPIC_API_KEY"] == "sk-test-key"
+
+
+class TestClaudeCredentialsPath:
+    def test_returns_path_when_exists(self, tmp_path, monkeypatch):
+        cred_file = tmp_path / ".claude" / ".credentials.json"
+        cred_file.parent.mkdir()
+        cred_file.write_text('{"claudeAiOauth": {}}')
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        assert _claude_credentials_path() == cred_file
+
+    def test_raises_when_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        with pytest.raises(RuntimeError, match="credentials not found"):
+            _claude_credentials_path()
+
+    def test_prefers_saved_state(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("cc_forge.docker.FORGE_CLAUDE_STATE", tmp_path)
+        saved = tmp_path / ".credentials.json"
+        saved.write_text('{"saved": true}')
+        assert _claude_credentials_path() == saved
 
 
 class TestBuildAgentCmd:
