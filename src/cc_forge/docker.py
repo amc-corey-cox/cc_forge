@@ -117,7 +117,7 @@ def _claude_credentials_path() -> Path:
         return host
     raise RuntimeError(
         "Claude credentials not found.\n"
-        "Run 'claude' locally first to authenticate via OAuth."
+        "Either set FORGE_CLAUDE_API_KEY or run 'claude' locally to authenticate."
     )
 
 
@@ -150,36 +150,40 @@ def _add_tar_dir(tar, name: str) -> None:
 
 
 def _copy_claude_config(container, config: ForgeConfig) -> None:
-    """Copy saved Claude state into the container."""
+    """Copy Claude config into the container.
+
+    When FORGE_CLAUDE_API_KEY is set, only injects onboarding bypass and CLAUDE.md.
+    Otherwise, also injects OAuth credentials from host or saved state.
+    """
     import io
     import tarfile
 
-    cred_path = _claude_credentials_path()
+    need_credentials = not config.claude_api_key
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
         _add_tar_dir(tar, ".claude/")
 
-        # Walk saved state directory and inject everything
-        if FORGE_CLAUDE_STATE.is_dir():
-            for path in FORGE_CLAUDE_STATE.rglob("*"):
-                rel = path.relative_to(FORGE_CLAUDE_STATE)
-                arc_name = f".claude/{rel}"
-                if path.is_dir():
-                    _add_tar_dir(tar, arc_name + "/")
-                else:
-                    mode = 0o600 if path.name == ".credentials.json" else 0o644
-                    _add_tar_file(tar, arc_name, path.read_bytes(), mode=mode)
-        else:
-            # No saved state — inject minimal defaults
+        if need_credentials:
+            cred_path = _claude_credentials_path()
+
+            # Walk saved state directory and inject everything
+            if FORGE_CLAUDE_STATE.is_dir():
+                for path in FORGE_CLAUDE_STATE.rglob("*"):
+                    rel = path.relative_to(FORGE_CLAUDE_STATE)
+                    arc_name = f".claude/{rel}"
+                    if path.is_dir():
+                        _add_tar_dir(tar, arc_name + "/")
+                    else:
+                        mode = 0o600 if path.name == ".credentials.json" else 0o644
+                        _add_tar_file(tar, arc_name, path.read_bytes(), mode=mode)
+            else:
+                _add_tar_file(tar, ".claude/.credentials.json",
+                              cred_path.read_bytes(), mode=0o600)
+
+            # Always inject fresh credentials (may be newer than saved state)
             _add_tar_file(tar, ".claude/.credentials.json",
                           cred_path.read_bytes(), mode=0o600)
-            _add_tar_file(tar, ".claude/settings.json",
-                          b'{"hasCompletedOnboarding":true}')
-
-        # Always inject fresh credentials (may be newer than saved state)
-        _add_tar_file(tar, ".claude/.credentials.json",
-                      cred_path.read_bytes(), mode=0o600)
 
         # Forge-specific agent CLAUDE.md (from docker/ directory, not host ~/.claude/)
         docker_dir = Path(config.compose_file).parent
@@ -188,25 +192,32 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
             _add_tar_file(tar, ".claude/CLAUDE.md",
                           agent_claude_md.read_bytes())
 
-        # $HOME/.claude.json — main state file (userID, account, feature flags)
+        # $HOME/.claude.json — onboarding bypass + saved state
+        # hasCompletedOnboarding lives here (NOT in settings.json)
         saved_claude_json = FORGE_CLAUDE_STATE / ".claude.json"
         if saved_claude_json.is_file():
             _add_tar_file(tar, ".claude.json",
                           saved_claude_json.read_bytes(), mode=0o600)
+        else:
+            _add_tar_file(tar, ".claude.json",
+                          b'{"hasCompletedOnboarding":true}', mode=0o600)
     buf.seek(0)
 
     container.put_archive("/home/agent", buf)
 
 
-def _claude_environment() -> dict[str, str]:
+def _claude_environment(config: ForgeConfig) -> dict[str, str]:
     """Environment variables for Claude API pass-through."""
-    return {
+    env = {
         # Override Dockerfile defaults that would route to Ollama
         "ANTHROPIC_BASE_URL": "",
         "ANTHROPIC_AUTH_TOKEN": "",
         # Container agent can't write to npm global; skip auto-update
         "CLAUDE_CODE_SKIP_UPDATE": "1",
     }
+    if config.claude_api_key:
+        env["ANTHROPIC_API_KEY"] = config.claude_api_key
+    return env
 
 
 def run_agent_container(
@@ -236,7 +247,7 @@ def run_agent_container(
     }
 
     if claude_passthrough:
-        environment.update(_claude_environment())
+        environment.update(_claude_environment(config))
     else:
         environment.update(_ollama_environment(config))
 

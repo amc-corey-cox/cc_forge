@@ -32,6 +32,7 @@ _DEFAULTS = {
     "FORGE_OLLAMA_GPU_URL": "http://localhost:11435",
     "FORGE_AGENT_IMAGE": "cc-forge-agent:latest",
     "FORGE_CLAUDE_MODEL": "qwen3-coder-32k",
+    "FORGE_CLAUDE_API_KEY": "",
     "FORGE_COMPOSE_FILE": "",
 }
 
@@ -84,6 +85,7 @@ class ForgeConfig:
     ollama_gpu_url: str = field(default_factory=lambda: _resolve("FORGE_OLLAMA_GPU_URL"))
     agent_image: str = field(default_factory=lambda: _resolve("FORGE_AGENT_IMAGE"))
     claude_model: str = field(default_factory=lambda: _resolve("FORGE_CLAUDE_MODEL"))
+    claude_api_key: str = field(default_factory=lambda: _resolve("FORGE_CLAUDE_API_KEY"))
     compose_file: str = field(default_factory=lambda: _resolve("FORGE_COMPOSE_FILE"))
 
 
