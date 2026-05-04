@@ -104,12 +104,13 @@ def _ollama_environment(config: ForgeConfig) -> dict[str, str]:
     }
 
 
-FORGE_CLAUDE_STATE = Path.home() / ".config" / "forge" / "claude-state"
+def _forge_claude_state_dir() -> Path:
+    return Path.home() / ".config" / "forge" / "claude-state"
 
 
 def _claude_credentials_path() -> Path:
-    """Return the path to Claude OAuth credentials (saved state or host)."""
-    saved = FORGE_CLAUDE_STATE / ".credentials.json"
+    """Return the path to Claude OAuth credentials (saved state preferred, then host)."""
+    saved = _forge_claude_state_dir() / ".credentials.json"
     if saved.is_file():
         return saved
     host = Path.home() / ".claude" / ".credentials.json"
@@ -166,22 +167,21 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
 
         if need_credentials:
             cred_path = _claude_credentials_path()
+            state_dir = _forge_claude_state_dir()
 
-            # Walk saved state directory and inject everything
-            if FORGE_CLAUDE_STATE.is_dir():
-                for path in FORGE_CLAUDE_STATE.rglob("*"):
-                    rel = path.relative_to(FORGE_CLAUDE_STATE)
+            # Inject saved state as baseline (skip credentials — we'll add fresh ones)
+            if state_dir.is_dir():
+                for path in state_dir.rglob("*"):
+                    rel = path.relative_to(state_dir)
+                    if rel.name == ".credentials.json":
+                        continue
                     arc_name = f".claude/{rel}"
                     if path.is_dir():
                         _add_tar_dir(tar, arc_name + "/")
                     else:
-                        mode = 0o600 if path.name == ".credentials.json" else 0o644
-                        _add_tar_file(tar, arc_name, path.read_bytes(), mode=mode)
-            else:
-                _add_tar_file(tar, ".claude/.credentials.json",
-                              cred_path.read_bytes(), mode=0o600)
+                        _add_tar_file(tar, arc_name, path.read_bytes())
 
-            # Always inject fresh credentials (may be newer than saved state)
+            # Inject credentials once (saved-preferred, host fallback)
             _add_tar_file(tar, ".claude/.credentials.json",
                           cred_path.read_bytes(), mode=0o600)
 
@@ -194,7 +194,7 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
 
         # $HOME/.claude.json — onboarding bypass + saved state
         # hasCompletedOnboarding lives here (NOT in settings.json)
-        saved_claude_json = FORGE_CLAUDE_STATE / ".claude.json"
+        saved_claude_json = _forge_claude_state_dir() / ".claude.json"
         if saved_claude_json.is_file():
             _add_tar_file(tar, ".claude.json",
                           saved_claude_json.read_bytes(), mode=0o600)
@@ -262,10 +262,17 @@ def run_agent_container(
         tty=True,
     )
 
-    if claude_passthrough:
-        _copy_claude_config(container, config)
+    try:
+        if claude_passthrough:
+            _copy_claude_config(container, config)
+        container.start()
+    except Exception:
+        try:
+            container.remove(force=True)
+        except docker.errors.APIError:
+            pass
+        raise
 
-    container.start()
     return container.id
 
 
@@ -338,57 +345,64 @@ def save_claude_credentials(container_id: str) -> None:
     import tarfile
 
     client = _docker_client()
+    state_dir = _forge_claude_state_dir()
     _SKIP_PATTERNS = {"debug", "session-env", "file-history", "shell-snapshots"}
 
     try:
         container = client.containers.get(container_id)
+    except NotFound:
+        return
+
+    try:
         bits, _ = container.get_archive("/home/agent/.claude/.")
-        buf = io.BytesIO()
-        for chunk in bits:
-            buf.write(chunk)
-        buf.seek(0)
+    except docker.errors.APIError:
+        click.echo("Warning: could not read Claude state from container.", err=True)
+        return
 
-        # Extract to temp, then swap into place
-        tmp_dir = FORGE_CLAUDE_STATE.parent / "claude-state-tmp"
-        if tmp_dir.exists():
-            shutil.rmtree(tmp_dir)
-        tmp_dir.mkdir(parents=True)
+    buf = io.BytesIO()
+    for chunk in bits:
+        buf.write(chunk)
+    buf.seek(0)
 
-        with tarfile.open(fileobj=buf, mode="r") as tar:
-            for member in tar.getmembers():
-                parts = Path(member.name).parts
-                # Skip debug, git repos, and large transient data
-                if any(p in _SKIP_PATTERNS for p in parts):
-                    continue
-                if ".git" in parts:
-                    continue
-                tar.extract(member, tmp_dir, filter="data")
+    tmp_dir = state_dir.parent / "claude-state-tmp"
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+    tmp_dir.mkdir(parents=True)
 
-        # Move extracted files into place (strip the top-level directory)
-        extracted = tmp_dir / ".claude" if (tmp_dir / ".claude").exists() else tmp_dir
-        if FORGE_CLAUDE_STATE.exists():
-            shutil.rmtree(FORGE_CLAUDE_STATE)
-        shutil.move(str(extracted), str(FORGE_CLAUDE_STATE))
-        if tmp_dir.exists():
-            shutil.rmtree(tmp_dir)
+    with tarfile.open(fileobj=buf, mode="r") as tar:
+        for member in tar.getmembers():
+            parts = Path(member.name).parts
+            if any(p in _SKIP_PATTERNS for p in parts):
+                continue
+            if ".git" in parts:
+                continue
+            tar.extract(member, tmp_dir, filter="data")
 
-        # Also save $HOME/.claude.json (main state file with userID/account)
-        try:
-            bits2, _ = container.get_archive("/home/agent/.claude.json")
-            buf2 = io.BytesIO()
-            for chunk in bits2:
-                buf2.write(chunk)
-            buf2.seek(0)
-            with tarfile.open(fileobj=buf2, mode="r") as tar:
-                member = tar.getmembers()[0]
+    extracted = tmp_dir / ".claude" if (tmp_dir / ".claude").exists() else tmp_dir
+    if state_dir.exists():
+        shutil.rmtree(state_dir)
+    shutil.move(str(extracted), str(state_dir))
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+
+    # Also save ~/.claude.json (onboarding/account state)
+    try:
+        bits2, _ = container.get_archive("/home/agent/.claude.json")
+    except docker.errors.APIError:
+        return
+
+    buf2 = io.BytesIO()
+    for chunk in bits2:
+        buf2.write(chunk)
+    buf2.seek(0)
+    with tarfile.open(fileobj=buf2, mode="r") as tar:
+        for member in tar.getmembers():
+            if member.isreg():
                 f = tar.extractfile(member)
                 if f:
-                    (FORGE_CLAUDE_STATE / ".claude.json").write_bytes(f.read())
-        except Exception:
-            pass  # May not exist on first run
-
-    except Exception:
-        pass  # Best-effort; don't fail the session over this
+                    state_dir.mkdir(parents=True, exist_ok=True)
+                    (state_dir / ".claude.json").write_bytes(f.read())
+                break
 
 
 def cleanup_container(container_id: str) -> None:
