@@ -37,6 +37,11 @@ RUN sed -i 's/?beta=true//g' /usr/local/lib/node_modules/@anthropic-ai/claude-co
         exit 1; \
     fi
 
+# Forgejo-backed `gh` shim — agent reaches for `gh` by training prior;
+# this routes supported subcommands to Forgejo's REST API.
+COPY gh-shim.sh /usr/local/bin/gh
+RUN chmod +x /usr/local/bin/gh
+
 # Create non-root user (remove ubuntu default to claim UID 1000)
 RUN userdel -r ubuntu 2>/dev/null; \
     useradd -m -s /bin/bash -u 1000 agent && \
