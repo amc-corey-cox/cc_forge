@@ -15,12 +15,14 @@ this document can be deleted.
   so no global uv pin is needed).
 - The agent image built on the server: `docker images cc-forge-agent:latest`.
 
+The install script symlinks the appropriate wrapper into `~/.local/bin/forge`,
+so `git pull` in the checkout updates the wrapper automatically.
+
 ## Server side
 
 ```bash
 ssh tesseract
-cp ~/Code/cc_forge/scripts/remote-forge/server-wrapper ~/.local/bin/forge
-chmod +x ~/.local/bin/forge
+~/Code/cc_forge/scripts/remote-forge/install server
 forge --version    # confirm
 ```
 
@@ -28,8 +30,7 @@ forge --version    # confirm
 
 ```bash
 # 1. Install the wrapper
-cp ~/Code/cc_forge/scripts/remote-forge/workstation-wrapper ~/.local/bin/forge
-chmod +x ~/.local/bin/forge
+~/Code/cc_forge/scripts/remote-forge/install workstation
 
 # 2. Make 'tesseract' resolvable for the Forgejo web UI
 #    (derives the IP from your existing ssh config; one-time, requires sudo)
@@ -65,7 +66,7 @@ work at `http://tesseract:3000` from the workstation's browser.
 
 ```bash
 # Workstation
-rm ~/.local/bin/forge
+rm ~/.local/bin/forge    # was a symlink into the checkout — safe to delete
 sudo sed -i '/[[:space:]]tesseract$/d' /etc/hosts
 
 # Server
