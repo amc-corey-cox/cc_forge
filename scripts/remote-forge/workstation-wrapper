@@ -13,7 +13,7 @@
 set -e
 
 SUBCMD="${1:-run}"
-shift 2>/dev/null || true
+[ $# -gt 0 ] && shift
 
 if [ "$SUBCMD" = "run" ]; then
     REPO_PATH=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -21,12 +21,14 @@ if [ "$SUBCMD" = "run" ]; then
         exit 1
     }
     REPO=$(basename "$REPO_PATH")
+    REPO_Q=$(printf %q "$REPO")
     echo "forge: syncing $REPO to tesseract..." >&2
+    ssh tesseract "mkdir -p forge-workspaces/$REPO_Q"
     rsync -az --delete \
         --exclude='.venv' --exclude='node_modules' --exclude='.tmp' \
         --exclude='__pycache__' \
         "$REPO_PATH/" "tesseract:forge-workspaces/$REPO/"
-    exec ssh -t tesseract "forge run --repo \$HOME/forge-workspaces/$REPO $*"
+    exec ssh -t tesseract "forge run --repo \$HOME/forge-workspaces/$REPO_Q $(printf '%q ' "$@")"
 else
-    exec ssh -t tesseract "forge $SUBCMD $*"
+    exec ssh -t tesseract "forge $(printf %q "$SUBCMD") $(printf '%q ' "$@")"
 fi

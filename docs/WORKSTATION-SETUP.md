@@ -34,7 +34,11 @@ chmod +x ~/.local/bin/forge
 # 2. Make 'tesseract' resolvable for the Forgejo web UI
 #    (derives the IP from your existing ssh config; one-time, requires sudo)
 TESSERACT_IP=$(awk '/^Host tesseract/{flag=1; next} /^Host /{flag=0} flag && /HostName/{print $2}' ~/.ssh/config)
-echo "$TESSERACT_IP  tesseract" | sudo tee -a /etc/hosts
+if [ -n "$TESSERACT_IP" ]; then
+    echo "$TESSERACT_IP  tesseract" | sudo tee -a /etc/hosts
+else
+    echo "Could not find HostName for tesseract in ~/.ssh/config — add the /etc/hosts line manually."
+fi
 ```
 
 After that, `forge run --claude` from any git repo on the workstation:

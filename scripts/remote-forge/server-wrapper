@@ -1,7 +1,13 @@
 #!/bin/bash -l
 # Install as ~/.local/bin/forge on the server that hosts Forgejo + the agent image.
 # Runs forge against the cc_forge checkout so mise/uv resolve from the repo's own config
-# (no global uv pin required).
+# (no global uv pin required). Override the checkout location with CC_FORGE_REPO.
 #
 # Interim setup for issue #42. Remove when forge learns to talk to a remote Forgejo.
-cd ~/Code/cc_forge && exec uv run -- forge "$@"
+CC_FORGE_REPO="${CC_FORGE_REPO:-$HOME/Code/cc_forge}"
+if [ ! -d "$CC_FORGE_REPO" ]; then
+    echo "forge: cc_forge checkout not found at $CC_FORGE_REPO" >&2
+    echo "forge: set CC_FORGE_REPO to override the checkout location" >&2
+    exit 1
+fi
+cd "$CC_FORGE_REPO" && exec uv run -- forge "$@"
