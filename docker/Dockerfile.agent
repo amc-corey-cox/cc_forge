@@ -48,7 +48,8 @@ USER agent
 ENV PATH="/home/agent/.local/bin:$PATH"
 RUN pipx install aider-chat
 
-# Forgejo connection (set at container launch)
+# Forgejo connection — token injected via .git-credentials, not env vars.
+# FORGEJO_URL and FORGEJO_TOKEN kept as empty defaults for manual docker run only.
 ENV FORGEJO_URL=""
 ENV FORGEJO_TOKEN=""
 ENV REPO_URL=""
@@ -63,7 +64,8 @@ ENV ANTHROPIC_BASE_URL="http://forge-ollama-proxy:11434"
 # Git configuration
 RUN git config --global user.name "Forge Agent" && \
     git config --global user.email "agent@forge.local" && \
-    git config --global init.defaultBranch main
+    git config --global init.defaultBranch main && \
+    git config --global credential.helper store
 
 WORKDIR /workspace
 

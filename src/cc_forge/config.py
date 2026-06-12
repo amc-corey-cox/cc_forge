@@ -34,6 +34,8 @@ _DEFAULTS = {
     "FORGE_CLAUDE_MODEL": "qwen3-coder-32k",
     "FORGE_CLAUDE_API_KEY": "",
     "FORGE_COMPOSE_FILE": "",
+    "FORGE_AGENT_MEM_LIMIT": "4g",
+    "FORGE_AGENT_PIDS_LIMIT": "4096",
 }
 
 _ENV_FILES = [
@@ -90,6 +92,8 @@ class ForgeConfig:
         or os.environ.get("ANTHROPIC_API_KEY", "")
     )
     compose_file: str = field(default_factory=lambda: _resolve("FORGE_COMPOSE_FILE"))
+    agent_mem_limit: str = field(default_factory=lambda: _resolve("FORGE_AGENT_MEM_LIMIT"))
+    agent_pids_limit: int = field(default_factory=lambda: int(_resolve("FORGE_AGENT_PIDS_LIMIT")))
 
 
 def load_config() -> ForgeConfig:

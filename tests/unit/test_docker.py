@@ -15,6 +15,7 @@ from cc_forge.docker import (
     _claude_environment,
     _claude_credentials_path,
     _copy_claude_config,
+    _inject_git_credentials,
     _build_agent_cmd,
     save_claude_credentials,
 )
@@ -24,11 +25,13 @@ def _make_config(**kwargs) -> ForgeConfig:
     defaults = dict(
         ollama_cpu_url="http://localhost:11434",
         forgejo_url="http://localhost:3000",
-        forgejo_token="test",
+        forgejo_token="test-token",
         agent_image="test",
         claude_model="test-model",
         claude_api_key="",
         compose_file="",
+        agent_mem_limit="4g",
+        agent_pids_limit=4096,
     )
     defaults.update(kwargs)
     return ForgeConfig(**defaults)
@@ -308,6 +311,106 @@ class TestCopyClaudeConfig:
 
         content = self._get_tar_content(container, ".claude/CLAUDE.md")
         assert content == b"# Agent instructions"
+
+
+class TestInjectGitCredentials:
+    """Tests for _inject_git_credentials tar injection."""
+
+    def _capture_container(self):
+        container = MagicMock()
+        container.captured_bufs = []
+
+        def capture_put_archive(path, buf):
+            container.captured_bufs.append((path, buf))
+
+        container.put_archive = capture_put_archive
+        return container
+
+    def test_injects_credentials_file(self):
+        config = _make_config(forgejo_url="http://localhost:3000", forgejo_token="tok123")
+        container = self._capture_container()
+
+        _inject_git_credentials(container, config)
+
+        assert container.captured_bufs, "put_archive was never called"
+        _, buf = container.captured_bufs[0]
+        members = _inspect_tar(buf)
+        assert ".git-credentials" in members
+        assert members[".git-credentials"].mode == 0o600
+        assert members[".git-credentials"].uid == AGENT_UID
+
+    def test_credential_format(self):
+        config = _make_config(forgejo_url="http://localhost:3000", forgejo_token="tok123")
+        container = self._capture_container()
+
+        _inject_git_credentials(container, config)
+
+        _, buf = container.captured_bufs[0]
+        buf.seek(0)
+        with tarfile.open(fileobj=buf, mode="r") as tar:
+            content = tar.extractfile(".git-credentials").read().decode()
+        assert "forge-agent:tok123@forge-forgejo:3000" in content
+
+    def test_skips_when_no_token(self):
+        config = _make_config(forgejo_token="")
+        container = self._capture_container()
+
+        _inject_git_credentials(container, config)
+
+        assert not container.captured_bufs
+
+
+class TestRunAgentContainer:
+    """Tests for run_agent_container configuration."""
+
+    def _run(self, claude_passthrough=False, **config_kwargs):
+        config = _make_config(**config_kwargs)
+        client = MagicMock()
+        client.images.get.return_value = True
+        container = MagicMock()
+        container.id = "test-container-id"
+        # Capture the create call
+        client.containers.create.return_value = container
+
+        with patch("cc_forge.docker._docker_client", return_value=client):
+            from cc_forge.docker import run_agent_container
+            result = run_agent_container(
+                config,
+                repo_url="http://localhost:3000/user/repo.git",
+                branch="main",
+                repo_name="repo",
+                claude_passthrough=claude_passthrough,
+            )
+        return client, container, result
+
+    def test_token_not_in_env_vars(self):
+        client, container, _ = self._run()
+        create_kwargs = client.containers.create.call_args
+        env = create_kwargs.kwargs["environment"]
+        assert "FORGEJO_TOKEN" not in env
+        assert "FORGEJO_URL" not in env
+
+    def test_resource_limits_applied(self):
+        client, _, _ = self._run(agent_mem_limit="2g", agent_pids_limit=1024)
+        create_kwargs = client.containers.create.call_args
+        assert create_kwargs.kwargs["mem_limit"] == "2g"
+        assert create_kwargs.kwargs["pids_limit"] == 1024
+
+    def test_host_gateway_present_for_ollama(self):
+        client, _, _ = self._run(claude_passthrough=False)
+        create_kwargs = client.containers.create.call_args
+        extra_hosts = create_kwargs.kwargs["extra_hosts"]
+        assert extra_hosts == {"host.docker.internal": "host-gateway"}
+
+    def test_host_gateway_absent_for_claude_passthrough(self):
+        client, _, _ = self._run(claude_passthrough=True)
+        create_kwargs = client.containers.create.call_args
+        assert create_kwargs.kwargs["extra_hosts"] is None
+
+    def test_git_credentials_injected(self):
+        _, container, _ = self._run()
+        # put_archive should be called for git credentials
+        container.put_archive.assert_called()
 
 
 class TestSaveClaudeCredentials:
