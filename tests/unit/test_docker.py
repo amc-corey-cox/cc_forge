@@ -1,14 +1,22 @@
 """Tests for docker module helpers."""
 from __future__ import annotations
 
+import io
+import tarfile
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from cc_forge.config import ForgeConfig
 from cc_forge.docker import (
+    AGENT_UID,
     _rewrite_url,
     _ollama_environment,
     _claude_environment,
+    _claude_credentials_path,
+    _copy_claude_config,
     _build_agent_cmd,
+    save_claude_credentials,
 )
 
 
@@ -19,10 +27,30 @@ def _make_config(**kwargs) -> ForgeConfig:
         forgejo_token="test",
         agent_image="test",
         claude_model="test-model",
+        claude_api_key="",
         compose_file="",
     )
     defaults.update(kwargs)
     return ForgeConfig(**defaults)
+
+
+def _make_tar(files: dict[str, bytes]) -> io.BytesIO:
+    """Create an in-memory tar archive from {path: content} dict."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    buf.seek(0)
+    return buf
+
+
+def _inspect_tar(buf: io.BytesIO) -> dict[str, tarfile.TarInfo]:
+    """Return {name: TarInfo} for all members in a tar buffer."""
+    buf.seek(0)
+    with tarfile.open(fileobj=buf, mode="r") as tar:
+        return {m.name: m for m in tar.getmembers()}
 
 
 class TestRewriteUrl:
@@ -71,22 +99,43 @@ class TestOllamaEnvironment:
 
 
 class TestClaudeEnvironment:
-    def test_passes_api_key(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key-123")
-        env = _claude_environment()
-        assert env["ANTHROPIC_API_KEY"] == "sk-test-key-123"
-        assert "DISABLE_PROMPT_CACHING" not in env
-
-    def test_overrides_dockerfile_defaults(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key-123")
-        env = _claude_environment()
+    def test_overrides_dockerfile_defaults(self):
+        config = _make_config()
+        env = _claude_environment(config)
         assert env["ANTHROPIC_BASE_URL"] == ""
         assert env["ANTHROPIC_AUTH_TOKEN"] == ""
 
-    def test_raises_without_api_key(self, monkeypatch):
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY not set"):
-            _claude_environment()
+    def test_no_api_key_by_default(self):
+        config = _make_config()
+        env = _claude_environment(config)
+        assert "ANTHROPIC_API_KEY" not in env
+
+    def test_passes_api_key_when_set(self):
+        config = _make_config(claude_api_key="sk-test-key")
+        env = _claude_environment(config)
+        assert env["ANTHROPIC_API_KEY"] == "sk-test-key"
+
+
+class TestClaudeCredentialsPath:
+    def test_returns_path_when_exists(self, tmp_path, monkeypatch):
+        cred_file = tmp_path / ".claude" / ".credentials.json"
+        cred_file.parent.mkdir()
+        cred_file.write_text('{"claudeAiOauth": {}}')
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        assert _claude_credentials_path() == cred_file
+
+    def test_raises_when_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        with pytest.raises(RuntimeError, match="credentials not found"):
+            _claude_credentials_path()
+
+    def test_prefers_saved_state(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "cc_forge.docker._forge_claude_state_dir", lambda: tmp_path
+        )
+        saved = tmp_path / ".credentials.json"
+        saved.write_text('{"saved": true}')
+        assert _claude_credentials_path() == saved
 
 
 class TestBuildAgentCmd:
@@ -110,3 +159,263 @@ class TestBuildAgentCmd:
         config = _make_config()
         cmd = _build_agent_cmd("bash", config)
         assert cmd == ["/bin/bash"]
+
+
+class TestCopyClaudeConfig:
+    """Tests for _copy_claude_config tar injection."""
+
+    def _capture_container(self):
+        """Return a mock container that captures put_archive calls."""
+        container = MagicMock()
+        container.captured_bufs = []
+
+        def capture_put_archive(path, buf):
+            container.captured_bufs.append((path, buf))
+
+        container.put_archive = capture_put_archive
+        return container
+
+    def _get_tar_members(self, container) -> dict[str, tarfile.TarInfo]:
+        """Extract tar members from the captured put_archive call."""
+        assert container.captured_bufs, "put_archive was never called"
+        _, buf = container.captured_bufs[0]
+        return _inspect_tar(buf)
+
+    def _get_tar_content(self, container, name: str) -> bytes:
+        """Extract file content from the captured tar."""
+        _, buf = container.captured_bufs[0]
+        buf.seek(0)
+        with tarfile.open(fileobj=buf, mode="r") as tar:
+            f = tar.extractfile(name)
+            assert f is not None, f"{name} not extractable"
+            return f.read()
+
+    def test_api_key_mode_skips_credentials(self, tmp_path):
+        config = _make_config(claude_api_key="sk-test", compose_file=str(tmp_path / "docker-compose.yml"))
+        container = self._capture_container()
+
+        _copy_claude_config(container, config)
+
+        members = self._get_tar_members(container)
+        assert ".claude/.credentials.json" not in members
+
+    def test_first_run_injects_host_credentials(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: tmp_path / "nonexistent")
+        host_creds = tmp_path / ".claude" / ".credentials.json"
+        host_creds.parent.mkdir(parents=True)
+        host_creds.write_bytes(b'{"host": true}')
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        config = _make_config(compose_file=str(tmp_path / "docker-compose.yml"))
+        container = self._capture_container()
+
+        _copy_claude_config(container, config)
+
+        content = self._get_tar_content(container, ".claude/.credentials.json")
+        assert content == b'{"host": true}'
+
+    def test_first_run_injects_minimal_claude_json(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: tmp_path / "nonexistent")
+        host_creds = tmp_path / ".claude" / ".credentials.json"
+        host_creds.parent.mkdir(parents=True)
+        host_creds.write_bytes(b'{"host": true}')
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        config = _make_config(compose_file=str(tmp_path / "docker-compose.yml"))
+        container = self._capture_container()
+
+        _copy_claude_config(container, config)
+
+        content = self._get_tar_content(container, ".claude.json")
+        assert b"hasCompletedOnboarding" in content
+
+    def test_saved_state_injected_as_baseline(self, tmp_path, monkeypatch):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / ".credentials.json").write_bytes(b'{"saved": true}')
+        (state_dir / "settings.json").write_bytes(b'{"setting": 1}')
+        subdir = state_dir / "projects"
+        subdir.mkdir()
+        (subdir / "config.json").write_bytes(b'{"project": 1}')
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: state_dir)
+
+        config = _make_config(compose_file=str(tmp_path / "docker-compose.yml"))
+        container = self._capture_container()
+
+        _copy_claude_config(container, config)
+
+        members = self._get_tar_members(container)
+        assert ".claude/settings.json" in members
+        assert ".claude/projects" in members
+        assert ".claude/projects/config.json" in members
+
+    def test_saved_credentials_preferred_over_host(self, tmp_path, monkeypatch):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / ".credentials.json").write_bytes(b'{"saved": true}')
+
+        host_creds = tmp_path / ".claude" / ".credentials.json"
+        host_creds.parent.mkdir(parents=True)
+        host_creds.write_bytes(b'{"host": true}')
+
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: state_dir)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        config = _make_config(compose_file=str(tmp_path / "docker-compose.yml"))
+        container = self._capture_container()
+
+        _copy_claude_config(container, config)
+
+        content = self._get_tar_content(container, ".claude/.credentials.json")
+        assert content == b'{"saved": true}'
+
+    def test_permissions_and_ownership(self, tmp_path, monkeypatch):
+        host_creds = tmp_path / ".claude" / ".credentials.json"
+        host_creds.parent.mkdir(parents=True)
+        host_creds.write_bytes(b'{"creds": true}')
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: tmp_path / "nonexistent")
+
+        config = _make_config(compose_file=str(tmp_path / "docker-compose.yml"))
+        container = self._capture_container()
+
+        _copy_claude_config(container, config)
+
+        members = self._get_tar_members(container)
+        creds = members[".claude/.credentials.json"]
+        assert creds.mode == 0o600
+        assert creds.uid == AGENT_UID
+        assert creds.gid == AGENT_UID
+
+        claude_dir = members[".claude"]
+        assert claude_dir.mode == 0o755
+        assert claude_dir.uid == AGENT_UID
+
+    def test_claude_md_injected_from_docker_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: tmp_path / "nonexistent")
+
+        docker_dir = tmp_path / "docker"
+        docker_dir.mkdir()
+        (docker_dir / "CLAUDE.md").write_bytes(b"# Agent instructions")
+
+        config = _make_config(
+            claude_api_key="sk-test",
+            compose_file=str(docker_dir / "docker-compose.yml"),
+        )
+        container = self._capture_container()
+
+        _copy_claude_config(container, config)
+
+        content = self._get_tar_content(container, ".claude/CLAUDE.md")
+        assert content == b"# Agent instructions"
+
+
+class TestSaveClaudeCredentials:
+    """Tests for save_claude_credentials state extraction."""
+
+    def _mock_container(self, claude_files: dict[str, bytes], claude_json: bytes | None = None):
+        """Build a mock container with get_archive returning synthetic tars."""
+        container = MagicMock()
+
+        def get_archive(path):
+            if ".claude/." in path:
+                # Wrap files under .claude/ prefix (Docker get_archive behavior)
+                wrapped = {f".claude/{k}": v for k, v in claude_files.items()}
+                tar_buf = _make_tar(wrapped)
+                return iter([tar_buf.read()]), {}
+            if ".claude.json" in path:
+                if claude_json is None:
+                    import docker.errors
+                    raise docker.errors.APIError("not found")
+                tar_buf = _make_tar({".claude.json": claude_json})
+                return iter([tar_buf.read()]), {}
+            import docker.errors
+            raise docker.errors.APIError("not found")
+
+        container.get_archive = get_archive
+        return container
+
+    def test_saves_state_to_disk(self, tmp_path, monkeypatch):
+        state_dir = tmp_path / "claude-state"
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: state_dir)
+
+        container = self._mock_container(
+            {".credentials.json": b'{"creds": true}', "settings.json": b'{"s": 1}'}
+        )
+        client = MagicMock()
+        client.containers.get.return_value = container
+        monkeypatch.setattr("cc_forge.docker._docker_client", lambda: client)
+
+        save_claude_credentials("test-id")
+
+        assert (state_dir / ".credentials.json").read_bytes() == b'{"creds": true}'
+        assert (state_dir / "settings.json").read_bytes() == b'{"s": 1}'
+
+    def test_creates_state_dir_on_first_run(self, tmp_path, monkeypatch):
+        state_dir = tmp_path / "deep" / "nested" / "claude-state"
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: state_dir)
+
+        container = self._mock_container(
+            {".credentials.json": b'{"creds": true}'},
+            claude_json=b'{"hasCompletedOnboarding": true}',
+        )
+        client = MagicMock()
+        client.containers.get.return_value = container
+        monkeypatch.setattr("cc_forge.docker._docker_client", lambda: client)
+
+        assert not state_dir.exists()
+        save_claude_credentials("test-id")
+
+        assert state_dir.is_dir()
+        assert (state_dir / ".credentials.json").exists()
+        assert (state_dir / ".claude.json").read_bytes() == b'{"hasCompletedOnboarding": true}'
+
+    def test_filters_skip_patterns(self, tmp_path, monkeypatch):
+        state_dir = tmp_path / "claude-state"
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: state_dir)
+
+        container = self._mock_container({
+            ".credentials.json": b'{"creds": true}',
+            "debug/log.txt": b"debug data",
+            "session-env/env.json": b"{}",
+            "file-history/h.json": b"{}",
+            "shell-snapshots/s.json": b"{}",
+            "settings.json": b'{"keep": true}',
+        })
+        client = MagicMock()
+        client.containers.get.return_value = container
+        monkeypatch.setattr("cc_forge.docker._docker_client", lambda: client)
+
+        save_claude_credentials("test-id")
+
+        assert (state_dir / "settings.json").exists()
+        assert not (state_dir / "debug").exists()
+        assert not (state_dir / "session-env").exists()
+        assert not (state_dir / "file-history").exists()
+        assert not (state_dir / "shell-snapshots").exists()
+
+    def test_filters_git_dirs(self, tmp_path, monkeypatch):
+        state_dir = tmp_path / "claude-state"
+        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: state_dir)
+
+        container = self._mock_container({
+            ".credentials.json": b'{"creds": true}',
+            ".git/config": b"git config",
+            "projects/.git/HEAD": b"ref",
+        })
+        client = MagicMock()
+        client.containers.get.return_value = container
+        monkeypatch.setattr("cc_forge.docker._docker_client", lambda: client)
+
+        save_claude_credentials("test-id")
+
+        assert not (state_dir / ".git").exists()
+
+    def test_container_not_found_returns_silently(self, monkeypatch):
+        from docker.errors import NotFound
+
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        monkeypatch.setattr("cc_forge.docker._docker_client", lambda: client)
+
+        save_claude_credentials("missing-id")  # Should not raise
