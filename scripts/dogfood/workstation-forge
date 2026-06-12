@@ -1,0 +1,32 @@
+#!/bin/bash
+# Install as ~/.local/bin/forge on a workstation that wants to invoke forge against a
+# remote Forgejo server. For 'forge run' (the default), the current repo is rsynced to
+# the server first; other subcommands pass straight through.
+#
+# Requires:
+# - SSH access to the server (alias "tesseract" in ~/.ssh/config)
+# - Server-side forge installed (see scripts/dogfood/tesseract-forge)
+# - Hostname "tesseract" resolvable to the server (see docs/DOGFOOD-WORKSTATION.md)
+#
+# Dogfood scaffolding for issue #42. Remove when forge learns to talk to a remote Forgejo.
+
+set -e
+
+SUBCMD="${1:-run}"
+shift 2>/dev/null || true
+
+if [ "$SUBCMD" = "run" ]; then
+    REPO_PATH=$(git rev-parse --show-toplevel 2>/dev/null) || {
+        echo "forge: not a git repository" >&2
+        exit 1
+    }
+    REPO=$(basename "$REPO_PATH")
+    echo "forge: syncing $REPO to tesseract..." >&2
+    rsync -az --delete \
+        --exclude='.venv' --exclude='node_modules' --exclude='.tmp' \
+        --exclude='__pycache__' \
+        "$REPO_PATH/" "tesseract:forge-workspaces/$REPO/"
+    exec ssh -t tesseract "forge run --repo \$HOME/forge-workspaces/$REPO $*"
+else
+    exec ssh -t tesseract "forge $SUBCMD $*"
+fi
