@@ -35,10 +35,10 @@ forge --version    # confirm
 # 2. Make 'tesseract' resolvable for the Forgejo web UI
 #    (derives the IP from your existing ssh config; one-time, requires sudo)
 TESSERACT_IP=$(awk '/^Host tesseract/{flag=1; next} /^Host /{flag=0} flag && /HostName/{print $2}' ~/.ssh/config)
-if [ -n "$TESSERACT_IP" ]; then
+if [[ "$TESSERACT_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "$TESSERACT_IP  tesseract" | sudo tee -a /etc/hosts
 else
-    echo "Could not find HostName for tesseract in ~/.ssh/config — add the /etc/hosts line manually."
+    echo "HostName for tesseract is missing or isn't an IPv4 address — resolve it manually and add the line to /etc/hosts."
 fi
 ```
 
@@ -67,7 +67,7 @@ work at `http://tesseract:3000` from the workstation's browser.
 ```bash
 # Workstation
 rm ~/.local/bin/forge    # was a symlink into the checkout — safe to delete
-sudo sed -i '/[[:space:]]tesseract$/d' /etc/hosts
+sudo sed -i.bak '/[[:space:]]tesseract$/d' /etc/hosts
 
 # Server
 ssh tesseract 'rm ~/.local/bin/forge'

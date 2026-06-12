@@ -27,7 +27,7 @@ if [ "$SUBCMD" = "run" ]; then
     rsync -az --delete \
         --exclude='.venv' --exclude='node_modules' --exclude='.tmp' \
         --exclude='__pycache__' \
-        "$REPO_PATH/" "tesseract:forge-workspaces/$REPO/"
+        "$REPO_PATH/" "tesseract:forge-workspaces/$REPO_Q/"
     exec ssh -t tesseract "forge run --repo \$HOME/forge-workspaces/$REPO_Q $(printf '%q ' "$@")"
 else
     exec ssh -t tesseract "forge $(printf %q "$SUBCMD") $(printf '%q ' "$@")"
