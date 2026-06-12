@@ -1,0 +1,49 @@
+#!/bin/bash
+# Install as ~/.local/bin/forge on a workstation that wants to invoke forge against a
+# remote Forgejo server. For 'forge run' (the default), the current repo is rsynced to
+# the server first; other subcommands pass straight through.
+#
+# Requires:
+# - SSH access to the server (alias "tesseract" in ~/.ssh/config)
+# - Server-side forge installed (see scripts/remote-forge/server-wrapper)
+# - Hostname "tesseract" resolvable to the server (see docs/WORKSTATION-SETUP.md)
+#
+# Interim setup for issue #42. Remove when forge learns to talk to a remote Forgejo.
+
+set -e
+
+SUBCMD="${1:-run}"
+[ $# -gt 0 ] && shift
+
+if [ "$SUBCMD" = "run" ]; then
+    # Reject user-passed --repo: this wrapper sets --repo to the synced workspace,
+    # and a second --repo would silently override it.
+    for a in "$@"; do
+        case "$a" in
+            --repo|--repo=*)
+                echo "forge: this wrapper sets --repo to the synced workspace; do not pass --repo yourself" >&2
+                exit 1
+                ;;
+        esac
+    done
+
+    REPO_PATH=$(git rev-parse --show-toplevel 2>/dev/null) || {
+        echo "forge: not a git repository" >&2
+        exit 1
+    }
+    REPO=$(basename "$REPO_PATH")
+    # Disambiguate workspaces for repos that share a basename
+    # (e.g. ~/work/foo vs ~/tmp/foo).
+    REPO_HASH=$(printf %s "$REPO_PATH" | sha1sum | cut -c1-8)
+    REPO_KEY="${REPO}-${REPO_HASH}"
+    REPO_KEY_Q=$(printf %q "$REPO_KEY")
+    echo "forge: syncing $REPO to tesseract (workspace: $REPO_KEY)..." >&2
+    ssh tesseract "mkdir -p forge-workspaces/$REPO_KEY_Q"
+    rsync -az --delete \
+        --exclude='.venv' --exclude='node_modules' --exclude='.tmp' \
+        --exclude='__pycache__' --exclude='.env*' \
+        "$REPO_PATH/" "tesseract:forge-workspaces/$REPO_KEY_Q/"
+    exec ssh -t tesseract "forge run --repo \$HOME/forge-workspaces/$REPO_KEY_Q $(printf '%q ' "$@")"
+else
+    exec ssh -t tesseract "forge $(printf %q "$SUBCMD") $(printf '%q ' "$@")"
+fi

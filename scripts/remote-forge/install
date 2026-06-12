@@ -1,0 +1,40 @@
+#!/bin/bash
+# Symlink the appropriate wrapper into ~/.local/bin/forge.
+# Run with `server` on the Forgejo host, `workstation` on a client.
+#
+# Interim setup for issue #42. Removed when forge learns to talk to a remote
+# Forgejo directly.
+
+set -e
+
+usage() {
+    echo "Usage: $0 server|workstation" >&2
+    exit 1
+}
+
+[ $# -eq 1 ] || usage
+case "$1" in
+    server)      WRAPPER=server-wrapper ;;
+    workstation) WRAPPER=workstation-wrapper ;;
+    *)           usage ;;
+esac
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+SRC="$SCRIPT_DIR/$WRAPPER"
+DEST="$HOME/.local/bin/forge"
+
+if [ ! -f "$SRC" ]; then
+    echo "install: source wrapper not found: $SRC" >&2
+    exit 1
+fi
+
+mkdir -p "$HOME/.local/bin"
+
+if [ -e "$DEST" ] && [ ! -L "$DEST" ]; then
+    echo "install: $DEST exists and is not a symlink; backing up to $DEST.bak" >&2
+    mv "$DEST" "$DEST.bak"
+fi
+
+ln -sfn "$SRC" "$DEST"
+chmod +x "$SRC"
+echo "Installed: $DEST -> $SRC"
