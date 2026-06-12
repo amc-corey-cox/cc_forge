@@ -64,13 +64,14 @@ api_post() {
 }
 
 cmd_pr_create() {
+    require_env
     local title="" head="" base="main" body=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --title) title="$2"; shift 2 ;;
-            --head)  head="$2";  shift 2 ;;
-            --base)  base="$2";  shift 2 ;;
-            --body)  body="$2";  shift 2 ;;
+            --title) [ $# -ge 2 ] || die "--title needs a value"; title="$2"; shift 2 ;;
+            --head)  [ $# -ge 2 ] || die "--head needs a value";  head="$2";  shift 2 ;;
+            --base)  [ $# -ge 2 ] || die "--base needs a value";  base="$2";  shift 2 ;;
+            --body)  [ $# -ge 2 ] || die "--body needs a value";  body="$2";  shift 2 ;;
             *) die "unknown flag for 'pr create': $1" ;;
         esac
     done
@@ -89,28 +90,28 @@ cmd_pr_create() {
 }
 
 cmd_pr_view() {
-    local n="${1:-}"
-    [ -n "$n" ] || die "'pr view' requires a number"
+    require_env
+    [ $# -eq 1 ] || die "'pr view' takes exactly one argument (the PR number)"
     local owner_repo
     owner_repo=$(detect_repo)
-    api_get "repos/$owner_repo/pulls/$n"
+    api_get "repos/$owner_repo/pulls/$1"
 }
 
 cmd_issue_view() {
-    local n="${1:-}"
-    [ -n "$n" ] || die "'issue view' requires a number"
+    require_env
+    [ $# -eq 1 ] || die "'issue view' takes exactly one argument (the issue number)"
     local owner_repo
     owner_repo=$(detect_repo)
-    api_get "repos/$owner_repo/issues/$n"
+    api_get "repos/$owner_repo/issues/$1"
 }
 
 cmd_issue_list() {
+    require_env
+    [ $# -eq 0 ] || die "'issue list' takes no arguments"
     local owner_repo
     owner_repo=$(detect_repo)
     api_get "repos/$owner_repo/issues"
 }
-
-require_env
 
 case "${1:-}" in
     pr)

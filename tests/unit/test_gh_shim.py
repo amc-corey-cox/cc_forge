@@ -108,6 +108,19 @@ class TestPrCreate:
         assert result.returncode != 0
         assert "--title is required" in result.stderr
 
+    def test_flag_without_value_fails_with_arity_error(self, fake_repo, fake_curl):
+        # Last-arg flag should produce a shim error, not a bash "unbound variable"
+        # message (which set -u would emit if $2 were read unguarded).
+        bin_dir, _ = fake_curl
+        result = _run(
+            ["pr", "create", "--head", "topic", "--title"],
+            _env(fake_repo),
+            bin_dir,
+        )
+        assert result.returncode != 0
+        assert "--title needs a value" in result.stderr
+        assert "unbound variable" not in result.stderr
+
 
 class TestPrView:
     def test_gets_pulls_by_number(self, fake_repo, fake_curl):
@@ -121,7 +134,13 @@ class TestPrView:
         bin_dir, _ = fake_curl
         result = _run(["pr", "view"], _env(fake_repo), bin_dir)
         assert result.returncode != 0
-        assert "requires a number" in result.stderr
+        assert "takes exactly one argument" in result.stderr
+
+    def test_extra_args_rejected(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(["pr", "view", "7", "--json"], _env(fake_repo), bin_dir)
+        assert result.returncode != 0
+        assert "takes exactly one argument" in result.stderr
 
 
 class TestIssueView:
@@ -135,6 +154,12 @@ class TestIssueView:
             in logged
         )
 
+    def test_extra_args_rejected(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(["issue", "view", "12", "--web"], _env(fake_repo), bin_dir)
+        assert result.returncode != 0
+        assert "takes exactly one argument" in result.stderr
+
 
 class TestIssueList:
     def test_lists_issues(self, fake_repo, fake_curl):
@@ -147,6 +172,12 @@ class TestIssueList:
             in logged
         )
 
+    def test_any_args_rejected(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(["issue", "list", "--state", "all"], _env(fake_repo), bin_dir)
+        assert result.returncode != 0
+        assert "takes no arguments" in result.stderr
+
 
 class TestAllowlist:
     def test_rejects_unknown_subcommand(self, fake_repo, fake_curl):
@@ -155,6 +186,18 @@ class TestAllowlist:
         assert result.returncode != 0
         assert "not supported" in result.stderr
         assert log.exists() is False or log.read_text() == ""
+
+    def test_unknown_subcommand_surfaces_allowlist_error_not_env_error(
+        self, fake_repo, fake_curl,
+    ):
+        # require_env runs inside cmd_* functions, so unsupported subcommands
+        # should report the allowlist mismatch even when env is unset.
+        bin_dir, _ = fake_curl
+        env = {"FORGE_WORKSPACE": str(fake_repo)}  # no FORGEJO_URL/TOKEN
+        result = _run(["repo", "view"], env, bin_dir)
+        assert result.returncode != 0
+        assert "not supported" in result.stderr
+        assert "FORGEJO_URL not set" not in result.stderr
 
     def test_rejects_unknown_pr_subcommand(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl
