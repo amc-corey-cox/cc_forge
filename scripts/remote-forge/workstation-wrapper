@@ -49,15 +49,20 @@ if [ "$SUBCMD" = "run" ]; then
         --exclude='.venv' --exclude='node_modules' --exclude='.tmp' \
         --exclude='__pycache__' --exclude='.env*' \
         "$REPO_PATH/" "$FORGE_SERVER:forge-workspaces/$REPO_KEY_Q/"
-    ssh -t "$FORGE_SERVER" "forge run --repo \$HOME/forge-workspaces/$REPO_KEY_Q $(printf '%q ' "$@")"
+    # Don't let a non-zero session exit (agent error, Ctrl-C) skip the fetch below.
+    ssh -t "$FORGE_SERVER" "forge run --repo \$HOME/forge-workspaces/$REPO_KEY_Q $(printf '%q ' "$@")" || true
 
     # Best-effort fetch of agent's work back from Forgejo.
     FORGEJO_URL="http://${FORGE_SERVER}:${FORGE_FORGEJO_PORT}/${FORGE_FORGEJO_USER}/${REPO}.git"
-    if ! git remote get-url forgejo &>/dev/null; then
+    if ! CURRENT_URL=$(git remote get-url forgejo 2>/dev/null); then
         git remote add forgejo "$FORGEJO_URL"
         echo "forge: added 'forgejo' remote → $FORGEJO_URL" >&2
+    elif [ "$CURRENT_URL" != "$FORGEJO_URL" ]; then
+        git remote set-url forgejo "$FORGEJO_URL"
+        echo "forge: updated 'forgejo' remote → $FORGEJO_URL" >&2
     fi
-    if git fetch forgejo 2>&1 | sed 's/^/forge: /' >&2; then
+    # pipefail so the branch follows git's exit status, not sed's.
+    if (set -o pipefail; git fetch forgejo 2>&1 | sed 's/^/forge: /' >&2); then
         echo "forge: session ended. Review at http://${FORGE_SERVER}:${FORGE_FORGEJO_PORT}/${FORGE_FORGEJO_USER}/${REPO}" >&2
         echo "forge: agent branches: $(git branch -r | grep 'forgejo/' | tr -d ' ' | paste -sd', ')" >&2
     else
