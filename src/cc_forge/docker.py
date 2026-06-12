@@ -226,14 +226,15 @@ def _inject_git_credentials(container, config: ForgeConfig) -> None:
     """Inject git credentials into the container without exposing the token as an env var."""
     import io
     import tarfile
+    from urllib.parse import urlsplit
 
     if not config.forgejo_token or not config.forgejo_url:
         return
 
     forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
-    proto = forgejo_url.split("://")[0]
-    host = forgejo_url.split("://")[1].rstrip("/")
-    cred_line = f"{proto}://forge-agent:{config.forgejo_token}@{host}\n"
+    parts = urlsplit(forgejo_url)
+    # git's store helper matches on scheme + host:port; drop any path/query.
+    cred_line = f"{parts.scheme}://forge-agent:{config.forgejo_token}@{parts.netloc}\n"
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
@@ -271,8 +272,10 @@ def run_agent_container(
     else:
         environment.update(_ollama_environment(config))
 
-    # Only expose host gateway when the agent needs Ollama on the host.
-    extra_hosts = {} if claude_passthrough else {"host.docker.internal": "host-gateway"}
+    # Only expose host gateway when the agent reaches Ollama on the host.
+    ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
+    needs_gateway = (not claude_passthrough) and "host.docker.internal" in ollama_url
+    extra_hosts = {"host.docker.internal": "host-gateway"} if needs_gateway else {}
 
     container = client.containers.create(
         image_tag,

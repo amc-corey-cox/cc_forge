@@ -351,6 +351,21 @@ class TestInjectGitCredentials:
             content = tar.extractfile(".git-credentials").read().decode()
         assert "forge-agent:tok123@forge-forgejo:3000" in content
 
+    def test_credential_format_strips_path(self):
+        # A Forgejo URL with a path must not leak the path into the host segment.
+        config = _make_config(
+            forgejo_url="http://localhost:3000/forgejo", forgejo_token="tok123"
+        )
+        container = self._capture_container()
+
+        _inject_git_credentials(container, config)
+
+        _, buf = container.captured_bufs[0]
+        buf.seek(0)
+        with tarfile.open(fileobj=buf, mode="r") as tar:
+            content = tar.extractfile(".git-credentials").read().decode()
+        assert content.strip() == "http://forge-agent:tok123@forge-forgejo:3000"
+
     def test_skips_when_no_token(self):
         config = _make_config(forgejo_token="")
         container = self._capture_container()
@@ -372,7 +387,8 @@ class TestRunAgentContainer:
         # Capture the create call
         client.containers.create.return_value = container
 
-        with patch("cc_forge.docker._docker_client", return_value=client):
+        with patch("cc_forge.docker._docker_client", return_value=client), \
+                patch("cc_forge.docker._copy_claude_config"):
             from cc_forge.docker import run_agent_container
             result = run_agent_container(
                 config,
@@ -404,6 +420,12 @@ class TestRunAgentContainer:
 
     def test_host_gateway_absent_for_claude_passthrough(self):
         client, _, _ = self._run(claude_passthrough=True)
+        create_kwargs = client.containers.create.call_args
+        assert create_kwargs.kwargs["extra_hosts"] is None
+
+    def test_host_gateway_absent_for_remote_ollama(self):
+        # Ollama on a non-local host needs no gateway mapping.
+        client, _, _ = self._run(ollama_cpu_url="http://ollama.internal:11434")
         create_kwargs = client.containers.create.call_args
         assert create_kwargs.kwargs["extra_hosts"] is None
 
