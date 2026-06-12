@@ -1,7 +1,0 @@
-#!/bin/bash -l
-# Install as ~/.local/bin/forge on the server (tesseract) that hosts Forgejo + the agent image.
-# Runs forge against the cc_forge checkout so mise/uv resolve from the repo's own config
-# (no global uv pin required).
-#
-# Dogfood scaffolding for issue #42. Remove when forge learns to talk to a remote Forgejo.
-cd ~/Code/cc_forge && exec uv run -- forge "$@"

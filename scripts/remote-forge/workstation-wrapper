@@ -5,10 +5,10 @@
 #
 # Requires:
 # - SSH access to the server (alias "tesseract" in ~/.ssh/config)
-# - Server-side forge installed (see scripts/dogfood/tesseract-forge)
-# - Hostname "tesseract" resolvable to the server (see docs/DOGFOOD-WORKSTATION.md)
+# - Server-side forge installed (see scripts/remote-forge/server-wrapper)
+# - Hostname "tesseract" resolvable to the server (see docs/WORKSTATION-SETUP.md)
 #
-# Dogfood scaffolding for issue #42. Remove when forge learns to talk to a remote Forgejo.
+# Interim setup for issue #42. Remove when forge learns to talk to a remote Forgejo.
 
 set -e
 

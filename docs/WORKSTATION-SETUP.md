@@ -1,4 +1,4 @@
-# Dogfood Setup: Running `forge` from a workstation
+# Workstation Setup: Running `forge` Against a Remote Forgejo
 
 Interim setup that lets you invoke `forge` from a workstation while Forgejo and
 the agent image live on a separate server (referred to here as `tesseract`).
@@ -15,11 +15,11 @@ this document can be deleted.
   so no global uv pin is needed).
 - The agent image built on the server: `docker images cc-forge-agent:latest`.
 
-## Server (tesseract) side
+## Server side
 
 ```bash
 ssh tesseract
-cp ~/Code/cc_forge/scripts/dogfood/tesseract-forge ~/.local/bin/forge
+cp ~/Code/cc_forge/scripts/remote-forge/server-wrapper ~/.local/bin/forge
 chmod +x ~/.local/bin/forge
 forge --version    # confirm
 ```
@@ -28,7 +28,7 @@ forge --version    # confirm
 
 ```bash
 # 1. Install the wrapper
-cp ~/Code/cc_forge/scripts/dogfood/workstation-forge ~/.local/bin/forge
+cp ~/Code/cc_forge/scripts/remote-forge/workstation-wrapper ~/.local/bin/forge
 chmod +x ~/.local/bin/forge
 
 # 2. Make 'tesseract' resolvable for the Forgejo web UI
@@ -69,4 +69,4 @@ ssh tesseract 'rm ~/.local/bin/forge'
 ```
 
 The `~/forge-workspaces/` directory on the server holds the rsync'd repos and
-can be removed when you're done dogfooding.
+can be removed when you are finished with the interim setup.
