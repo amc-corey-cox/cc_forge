@@ -3,7 +3,7 @@
 
 services:
   forgejo:
-    image: codeberg.org/forgejo/forgejo:15
+    image: codeberg.org/forgejo/forgejo:14
     container_name: forge-forgejo
     restart: unless-stopped
     volumes:
