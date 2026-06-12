@@ -112,7 +112,10 @@ def start_session(
         exec_agent(container_id, agent, config, claude_passthrough=claude_passthrough)
     finally:
         if claude_passthrough and not config.claude_api_key:
-            save_claude_credentials(container_id)
+            try:
+                save_claude_credentials(container_id)
+            except Exception as e:
+                click.echo(f"Warning: failed to save Claude state: {e}", err=True)
         click.echo("\n--- Session ended. Cleaning up container...")
         cleanup_container(container_id)
 

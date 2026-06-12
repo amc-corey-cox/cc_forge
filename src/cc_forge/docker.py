@@ -110,12 +110,14 @@ def _forge_claude_state_dir() -> Path:
 
 def _claude_credentials_path() -> Path:
     """Return the path to Claude OAuth credentials (saved state preferred, then host)."""
-    saved = _forge_claude_state_dir() / ".credentials.json"
-    if saved.is_file():
-        return saved
-    host = Path.home() / ".claude" / ".credentials.json"
-    if host.is_file():
-        return host
+    for candidate in (
+        _forge_claude_state_dir() / ".credentials.json",
+        Path.home() / ".claude" / ".credentials.json",
+    ):
+        if candidate.is_symlink():
+            raise RuntimeError(f"Refusing to use symlinked credentials: {candidate}")
+        if candidate.is_file():
+            return candidate
     raise RuntimeError(
         "Claude credentials not found.\n"
         "Either set FORGE_CLAUDE_API_KEY or run 'claude' locally to authenticate."
@@ -343,6 +345,7 @@ def save_claude_credentials(container_id: str) -> None:
     import io
     import shutil
     import tarfile
+    import tempfile
 
     client = _docker_client()
     state_dir = _forge_claude_state_dir()
@@ -364,26 +367,29 @@ def save_claude_credentials(container_id: str) -> None:
         buf.write(chunk)
     buf.seek(0)
 
-    tmp_dir = state_dir.parent / "claude-state-tmp"
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir)
-    tmp_dir.mkdir(parents=True)
+    state_dir.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        dir=state_dir.parent, prefix="claude-state-tmp-"
+    ) as tmp_dir_str:
+        tmp_dir = Path(tmp_dir_str)
+        with tarfile.open(fileobj=buf, mode="r") as tar:
+            for member in tar.getmembers():
+                parts = Path(member.name).parts
+                if any(p in _SKIP_PATTERNS for p in parts):
+                    continue
+                if ".git" in parts:
+                    continue
+                tar.extract(member, tmp_dir, filter="data")
 
-    with tarfile.open(fileobj=buf, mode="r") as tar:
-        for member in tar.getmembers():
-            parts = Path(member.name).parts
-            if any(p in _SKIP_PATTERNS for p in parts):
-                continue
-            if ".git" in parts:
-                continue
-            tar.extract(member, tmp_dir, filter="data")
+        extracted = tmp_dir / ".claude" if (tmp_dir / ".claude").exists() else tmp_dir
+        if state_dir.exists():
+            shutil.rmtree(state_dir)
+        shutil.move(str(extracted), str(state_dir))
 
-    extracted = tmp_dir / ".claude" if (tmp_dir / ".claude").exists() else tmp_dir
-    if state_dir.exists():
-        shutil.rmtree(state_dir)
-    shutil.move(str(extracted), str(state_dir))
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir)
+    state_dir.chmod(0o700)
+    cred_file = state_dir / ".credentials.json"
+    if cred_file.is_file():
+        cred_file.chmod(0o600)
 
     # Also save ~/.claude.json (onboarding/account state)
     try:
@@ -401,7 +407,11 @@ def save_claude_credentials(container_id: str) -> None:
                 f = tar.extractfile(member)
                 if f:
                     state_dir.mkdir(parents=True, exist_ok=True)
-                    (state_dir / ".claude.json").write_bytes(f.read())
+                    target = state_dir / ".claude.json"
+                    tmp = state_dir / ".claude.json.tmp"
+                    tmp.write_bytes(f.read())
+                    tmp.chmod(0o600)
+                    tmp.replace(target)
                 break
 
 
