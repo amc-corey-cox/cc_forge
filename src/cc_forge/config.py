@@ -79,6 +79,15 @@ def _resolve(key: str) -> str:
     return default
 
 
+def _resolve_int(key: str) -> int:
+    """Resolve an integer config value with an actionable error on bad input."""
+    raw = _resolve(key)
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f"{key} must be an integer, got {raw!r}")
+
+
 @dataclass(frozen=True)
 class ForgeConfig:
     forgejo_url: str = field(default_factory=lambda: _resolve("FORGE_FORGEJO_URL"))
@@ -93,7 +102,7 @@ class ForgeConfig:
     )
     compose_file: str = field(default_factory=lambda: _resolve("FORGE_COMPOSE_FILE"))
     agent_mem_limit: str = field(default_factory=lambda: _resolve("FORGE_AGENT_MEM_LIMIT"))
-    agent_pids_limit: int = field(default_factory=lambda: int(_resolve("FORGE_AGENT_PIDS_LIMIT")))
+    agent_pids_limit: int = field(default_factory=lambda: _resolve_int("FORGE_AGENT_PIDS_LIMIT"))
 
 
 def load_config() -> ForgeConfig:

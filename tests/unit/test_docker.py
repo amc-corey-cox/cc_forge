@@ -366,6 +366,21 @@ class TestInjectGitCredentials:
             content = tar.extractfile(".git-credentials").read().decode()
         assert content.strip() == "http://forge-agent:tok123@forge-forgejo:3000"
 
+    def test_token_is_url_encoded(self):
+        # Reserved chars in the token must be percent-encoded, not embedded raw.
+        config = _make_config(
+            forgejo_url="http://localhost:3000", forgejo_token="ab/cd@ef:gh"
+        )
+        container = self._capture_container()
+
+        _inject_git_credentials(container, config)
+
+        _, buf = container.captured_bufs[0]
+        buf.seek(0)
+        with tarfile.open(fileobj=buf, mode="r") as tar:
+            content = tar.extractfile(".git-credentials").read().decode()
+        assert "forge-agent:ab%2Fcd%40ef%3Agh@forge-forgejo:3000" in content
+
     def test_skips_when_no_token(self):
         config = _make_config(forgejo_token="")
         container = self._capture_container()

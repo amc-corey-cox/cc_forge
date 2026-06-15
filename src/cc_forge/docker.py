@@ -226,7 +226,7 @@ def _inject_git_credentials(container, config: ForgeConfig) -> None:
     """Inject git credentials into the container without exposing the token as an env var."""
     import io
     import tarfile
-    from urllib.parse import urlsplit
+    from urllib.parse import quote, urlsplit
 
     if not config.forgejo_token or not config.forgejo_url:
         return
@@ -234,7 +234,9 @@ def _inject_git_credentials(container, config: ForgeConfig) -> None:
     forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
     parts = urlsplit(forgejo_url)
     # git's store helper matches on scheme + host:port; drop any path/query.
-    cred_line = f"{parts.scheme}://forge-agent:{config.forgejo_token}@{parts.netloc}\n"
+    # Percent-encode the token so reserved chars (@ : /) don't corrupt the URL.
+    token = quote(config.forgejo_token, safe="")
+    cred_line = f"{parts.scheme}://forge-agent:{token}@{parts.netloc}\n"
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:

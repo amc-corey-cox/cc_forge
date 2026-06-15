@@ -13,7 +13,9 @@ fi
 if [ ! -f "$HOME/.git-credentials" ] && [ -n "$FORGEJO_TOKEN" ] && [ -n "$FORGEJO_URL" ]; then
     FORGEJO_PROTO=$(echo "$FORGEJO_URL" | sed 's|://.*||')
     FORGEJO_HOST=$(echo "$FORGEJO_URL" | sed 's|https\?://||' | sed 's|/.*||')
-    echo "${FORGEJO_PROTO}://forge-agent:${FORGEJO_TOKEN}@${FORGEJO_HOST}" > "$HOME/.git-credentials"
+    # Percent-encode the token so reserved chars (@ : /) don't corrupt the URL.
+    ENC_TOKEN=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$FORGEJO_TOKEN")
+    echo "${FORGEJO_PROTO}://forge-agent:${ENC_TOKEN}@${FORGEJO_HOST}" > "$HOME/.git-credentials"
     chmod 600 "$HOME/.git-credentials"
 fi
 
