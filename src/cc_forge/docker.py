@@ -222,6 +222,29 @@ def _claude_environment(config: ForgeConfig) -> dict[str, str]:
     return env
 
 
+def _inject_git_credentials(container, config: ForgeConfig) -> None:
+    """Inject git credentials into the container without exposing the token as an env var."""
+    import io
+    import tarfile
+    from urllib.parse import quote, urlsplit
+
+    if not config.forgejo_token or not config.forgejo_url:
+        return
+
+    forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
+    parts = urlsplit(forgejo_url)
+    # git's store helper matches on scheme + host:port; drop any path/query.
+    # Percent-encode the token so reserved chars (@ : /) don't corrupt the URL.
+    token = quote(config.forgejo_token, safe="")
+    cred_line = f"{parts.scheme}://forge-agent:{token}@{parts.netloc}\n"
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        _add_tar_file(tar, ".git-credentials", cred_line.encode(), mode=0o600)
+    buf.seek(0)
+    container.put_archive("/home/agent", buf)
+
+
 def run_agent_container(
     config: ForgeConfig,
     repo_url: str,
@@ -238,11 +261,9 @@ def run_agent_container(
 
     # Rewrite URLs for container network: localhost → Docker service names.
     clone_url = _rewrite_url(repo_url, "forge-forgejo")
-    forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
 
+    # Token is injected via .git-credentials file, not env vars.
     environment = {
-        "FORGEJO_URL": forgejo_url,
-        "FORGEJO_TOKEN": config.forgejo_token,
         "REPO_URL": clone_url,
         "REPO_BRANCH": branch,
         "FORGE_AGENT": agent,
@@ -263,18 +284,26 @@ def run_agent_container(
     else:
         environment.update(_ollama_environment(config))
 
+    # Only expose host gateway when the agent reaches Ollama on the host.
+    ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
+    needs_gateway = (not claude_passthrough) and "host.docker.internal" in ollama_url
+    extra_hosts = {"host.docker.internal": "host-gateway"} if needs_gateway else {}
+
     container = client.containers.create(
         image_tag,
         name=container_name,
         network="forge-network",
         environment=environment,
         labels={"forge.role": "agent", "forge.repo": repo_name},
-        extra_hosts={"host.docker.internal": "host-gateway"},
+        extra_hosts=extra_hosts or None,
         stdin_open=True,
         tty=True,
+        mem_limit=config.agent_mem_limit,
+        pids_limit=config.agent_pids_limit,
     )
 
     try:
+        _inject_git_credentials(container, config)
         if claude_passthrough:
             _copy_claude_config(container, config)
         container.start()

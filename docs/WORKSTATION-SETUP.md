@@ -46,19 +46,21 @@ After that, `forge run --claude` from any git repo on the workstation:
 
 1. rsyncs the repo to `tesseract:~/forge-workspaces/<repo>/`,
 2. SSHes to tesseract with a TTY,
-3. invokes server-side `forge run --repo ~/forge-workspaces/<repo> --claude`.
+3. invokes server-side `forge run --repo ~/forge-workspaces/<repo> --claude`,
+4. on session end, adds a `forgejo` remote and fetches agent branches back.
 
-The agent session runs as it always did. You can review and merge the agent's
-work at `http://tesseract:3000` from the workstation's browser.
+The agent session runs as it always did. You can review the agent's work at
+`http://tesseract:3000` from the workstation's browser, and the agent's
+branches are available locally via `git branch -r | grep forgejo/`.
 
 ## Limitations
 
 - The agent works on the server-side rsync'd copy. Local uncommitted changes
-  travel via rsync (good), but the agent's commits land in Forgejo (server),
-  not in your workstation working tree. Pull from Forgejo or rsync the
-  workspace back when you want them locally.
-- Wrapper assumes the SSH alias is literally `tesseract`. If you use a
-  different host, edit the script.
+  travel via rsync (good), but the agent's commits land in Forgejo (server).
+  The wrapper auto-fetches agent branches after the session ends.
+- Override the server hostname, Forgejo user, or port via env vars:
+  `FORGE_SERVER`, `FORGE_FORGEJO_USER`, `FORGE_FORGEJO_PORT` (defaults:
+  `tesseract`, `cc_forge_admin`, `3000`).
 - Workstation `~/.config/forge/config.env` is intentionally absent — the
   workstation wrapper does not run forge locally, so it does not read config.
 

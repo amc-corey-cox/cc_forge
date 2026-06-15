@@ -4,9 +4,11 @@
 # the server first; other subcommands pass straight through.
 #
 # Requires:
-# - SSH access to the server (alias "tesseract" in ~/.ssh/config)
+# - SSH access to the server (default alias "tesseract" in ~/.ssh/config)
 # - Server-side forge installed (see scripts/remote-forge/server-wrapper)
-# - Hostname "tesseract" resolvable to the server (see docs/WORKSTATION-SETUP.md)
+# - Server hostname resolvable for Forgejo web UI (see docs/WORKSTATION-SETUP.md)
+#
+# Override defaults via env vars: FORGE_SERVER, FORGE_FORGEJO_USER, FORGE_FORGEJO_PORT.
 #
 # Interim setup for issue #42. Remove when forge learns to talk to a remote Forgejo.
 
@@ -37,13 +39,36 @@ if [ "$SUBCMD" = "run" ]; then
     REPO_HASH=$(printf %s "$REPO_PATH" | sha1sum | cut -c1-8)
     REPO_KEY="${REPO}-${REPO_HASH}"
     REPO_KEY_Q=$(printf %q "$REPO_KEY")
-    echo "forge: syncing $REPO to tesseract (workspace: $REPO_KEY)..." >&2
-    ssh tesseract "mkdir -p forge-workspaces/$REPO_KEY_Q"
+    FORGE_SERVER="${FORGE_SERVER:-tesseract}"
+    FORGE_FORGEJO_USER="${FORGE_FORGEJO_USER:-cc_forge_admin}"
+    FORGE_FORGEJO_PORT="${FORGE_FORGEJO_PORT:-3000}"
+
+    echo "forge: syncing $REPO to $FORGE_SERVER (workspace: $REPO_KEY)..." >&2
+    ssh "$FORGE_SERVER" "mkdir -p forge-workspaces/$REPO_KEY_Q"
     rsync -az --delete \
         --exclude='.venv' --exclude='node_modules' --exclude='.tmp' \
         --exclude='__pycache__' --exclude='.env*' \
-        "$REPO_PATH/" "tesseract:forge-workspaces/$REPO_KEY_Q/"
-    exec ssh -t tesseract "forge run --repo \$HOME/forge-workspaces/$REPO_KEY_Q $(printf '%q ' "$@")"
+        "$REPO_PATH/" "$FORGE_SERVER:forge-workspaces/$REPO_KEY_Q/"
+    # Don't let a non-zero session exit (agent error, Ctrl-C) skip the fetch below.
+    ssh -t "$FORGE_SERVER" "forge run --repo \$HOME/forge-workspaces/$REPO_KEY_Q $(printf '%q ' "$@")" || true
+
+    # Best-effort fetch of agent's work back from Forgejo.
+    FORGEJO_URL="http://${FORGE_SERVER}:${FORGE_FORGEJO_PORT}/${FORGE_FORGEJO_USER}/${REPO}.git"
+    if ! CURRENT_URL=$(git remote get-url forgejo 2>/dev/null); then
+        git remote add forgejo "$FORGEJO_URL"
+        echo "forge: added 'forgejo' remote → $FORGEJO_URL" >&2
+    elif [ "$CURRENT_URL" != "$FORGEJO_URL" ]; then
+        git remote set-url forgejo "$FORGEJO_URL"
+        echo "forge: updated 'forgejo' remote → $FORGEJO_URL" >&2
+    fi
+    # pipefail so the branch follows git's exit status, not sed's.
+    if (set -o pipefail; git fetch forgejo 2>&1 | sed 's/^/forge: /' >&2); then
+        echo "forge: session ended. Review at http://${FORGE_SERVER}:${FORGE_FORGEJO_PORT}/${FORGE_FORGEJO_USER}/${REPO}" >&2
+        echo "forge: agent branches: $(git branch -r | grep 'forgejo/' | tr -d ' ' | paste -sd', ')" >&2
+    else
+        echo "forge: could not fetch from Forgejo (is $FORGE_SERVER:$FORGE_FORGEJO_PORT reachable?)" >&2
+    fi
 else
-    exec ssh -t tesseract "forge $(printf %q "$SUBCMD") $(printf '%q ' "$@")"
+    FORGE_SERVER="${FORGE_SERVER:-tesseract}"
+    exec ssh -t "$FORGE_SERVER" "forge $(printf %q "$SUBCMD") $(printf '%q ' "$@")"
 fi

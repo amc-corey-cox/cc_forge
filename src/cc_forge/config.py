@@ -37,6 +37,8 @@ _DEFAULTS = {
     "FORGE_GITHUB_TOKEN": "",
     "FORGE_GITHUB_REPO": "",
     "FORGE_GITHUB_OWNER": "",
+    "FORGE_AGENT_MEM_LIMIT": "4g",
+    "FORGE_AGENT_PIDS_LIMIT": "4096",
 }
 
 _ENV_FILES = [
@@ -80,6 +82,15 @@ def _resolve(key: str) -> str:
     return default
 
 
+def _resolve_int(key: str) -> int:
+    """Resolve an integer config value with an actionable error on bad input."""
+    raw = _resolve(key)
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f"{key} must be an integer, got {raw!r}")
+
+
 @dataclass(frozen=True)
 class ForgeConfig:
     forgejo_url: str = field(default_factory=lambda: _resolve("FORGE_FORGEJO_URL"))
@@ -96,6 +107,8 @@ class ForgeConfig:
     github_token: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_TOKEN"))
     github_repo: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_REPO"))
     github_owner: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_OWNER"))
+    agent_mem_limit: str = field(default_factory=lambda: _resolve("FORGE_AGENT_MEM_LIMIT"))
+    agent_pids_limit: int = field(default_factory=lambda: _resolve_int("FORGE_AGENT_PIDS_LIMIT"))
 
 
 def load_config() -> ForgeConfig:
