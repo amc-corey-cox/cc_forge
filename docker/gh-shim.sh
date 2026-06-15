@@ -5,15 +5,13 @@
 # /usr/local/bin/gh so that `gh pr create`, `gh issue view`, etc. translate
 # to the right backend instead of failing.
 #
-# Routing rules (by subcommand, not by flag):
-#   pr ... ........ Forgejo workspace (write+read, via $FORGEJO_*)
-#   issue ... ..... GitHub (read-only, via $FORGE_GITHUB_TOKEN)
+# Routing rules:
+#   pr create ............... Forgejo workspace (writes; -R/--repo is rejected)
+#   pr view <N> ............. Forgejo workspace (default), or GitHub if -R given
+#   issue view, issue list .. GitHub always; -R picks the specific GitHub repo
 #
-# Supported subcommands (allowlist):
-#   gh pr create --title T --head B [--base B] [--body B]   -> Forgejo
-#   gh pr view <number>                                     -> Forgejo
-#   gh issue view <number>                                  -> GitHub
-#   gh issue list                                           -> GitHub
+# Without -R, GitHub-bound commands resolve their target from
+# $FORGE_GITHUB_REPO (override) or $FORGE_GITHUB_OWNER + workspace basename.
 #
 # Output is the raw underlying API's JSON response. Anything outside the
 # allowlist exits with a clear message naming what's supported.
@@ -69,7 +67,7 @@ detect_github_repo() {
 
 forgejo_get() {
     local path="$1"
-    curl -sf \
+    curl -sSf \
         -H "Authorization: token $FORGEJO_TOKEN" \
         -H "Accept: application/json" \
         "$FORGEJO_URL/api/v1/$path"
@@ -77,7 +75,7 @@ forgejo_get() {
 
 forgejo_post() {
     local path="$1" body="$2"
-    curl -sf -X POST \
+    curl -sSf -X POST \
         -H "Authorization: token $FORGEJO_TOKEN" \
         -H "Content-Type: application/json" \
         -H "Accept: application/json" \
@@ -87,14 +85,39 @@ forgejo_post() {
 
 github_get() {
     local path="$1"
-    curl -sf \
+    curl -sSf \
         -H "Authorization: token $FORGE_GITHUB_TOKEN" \
         -H "Accept: application/vnd.github+json" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
         "https://api.github.com/$path"
 }
 
+# Strip -R/--repo (and the =value forms) from args into the dash_R variable,
+# leaving non-flag args in the positional array. Used by read subcommands.
+# Caller must declare `dash_R` and `positional` as local before calling.
+parse_dash_R() {
+    dash_R=""
+    positional=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -R|--repo)
+                [ $# -ge 2 ] || die "$1 needs a value"
+                dash_R="$2"; shift 2 ;;
+            -R=*)     dash_R="${1#-R=}"; shift ;;
+            --repo=*) dash_R="${1#--repo=}"; shift ;;
+            *) positional+=("$1"); shift ;;
+        esac
+    done
+}
+
 cmd_pr_create() {
+    # Writes never target GitHub.
+    for arg in "$@"; do
+        case "$arg" in
+            -R|--repo|-R=*|--repo=*)
+                die "'pr create' writes to your Forgejo workspace; -R/--repo is not supported on writes" ;;
+        esac
+    done
     require_forgejo_env
     local title="" head="" base="main" body=""
     while [ $# -gt 0 ]; do
@@ -121,27 +144,51 @@ cmd_pr_create() {
 }
 
 cmd_pr_view() {
-    require_forgejo_env
+    local dash_R; local positional
+    parse_dash_R "$@"
+    set -- "${positional[@]+"${positional[@]}"}"
     [ $# -eq 1 ] || die "'pr view' takes exactly one argument (the PR number)"
-    local owner_repo
-    owner_repo=$(detect_forgejo_repo)
-    forgejo_get "repos/$owner_repo/pulls/$1"
+    if [ -n "$dash_R" ]; then
+        # -R given → GitHub upstream lookup
+        require_github_env
+        github_get "repos/$dash_R/pulls/$1"
+    else
+        # Default → Forgejo workspace
+        require_forgejo_env
+        local owner_repo
+        owner_repo=$(detect_forgejo_repo)
+        forgejo_get "repos/$owner_repo/pulls/$1"
+    fi
 }
 
 cmd_issue_view() {
     require_github_env
+    local dash_R; local positional
+    parse_dash_R "$@"
+    set -- "${positional[@]+"${positional[@]}"}"
     [ $# -eq 1 ] || die "'issue view' takes exactly one argument (the issue number)"
-    local owner_repo
-    owner_repo=$(detect_github_repo)
-    github_get "repos/$owner_repo/issues/$1"
+    local target
+    if [ -n "$dash_R" ]; then
+        target="$dash_R"
+    else
+        target=$(detect_github_repo)
+    fi
+    github_get "repos/$target/issues/$1"
 }
 
 cmd_issue_list() {
     require_github_env
+    local dash_R; local positional
+    parse_dash_R "$@"
+    set -- "${positional[@]+"${positional[@]}"}"
     [ $# -eq 0 ] || die "'issue list' takes no arguments"
-    local owner_repo
-    owner_repo=$(detect_github_repo)
-    github_get "repos/$owner_repo/issues"
+    local target
+    if [ -n "$dash_R" ]; then
+        target="$dash_R"
+    else
+        target=$(detect_github_repo)
+    fi
+    github_get "repos/$target/issues"
 }
 
 case "${1:-}" in

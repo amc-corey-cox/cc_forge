@@ -224,6 +224,112 @@ class TestGithubRouting:
         assert "http://forge-forgejo:3000/api/v1/repos/alice/widgets/pulls/7" in log.read_text()
 
 
+class TestDashROnReads:
+    """-R/--repo on read commands targets a specific GitHub repo."""
+
+    def test_pr_view_with_dash_R_routes_to_github(self, fake_repo, fake_curl):
+        bin_dir, log = fake_curl
+        result = _run(
+            ["pr", "view", "-R", "anthropics/sdk", "42"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        logged = log.read_text()
+        assert "https://api.github.com/repos/anthropics/sdk/pulls/42" in logged
+        assert "forge-forgejo" not in logged
+
+    def test_pr_view_long_repo_flag(self, fake_repo, fake_curl):
+        bin_dir, log = fake_curl
+        result = _run(
+            ["pr", "view", "--repo", "anthropics/sdk", "42"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "https://api.github.com/repos/anthropics/sdk/pulls/42" in log.read_text()
+
+    def test_pr_view_equals_form(self, fake_repo, fake_curl):
+        bin_dir, log = fake_curl
+        result = _run(
+            ["pr", "view", "--repo=anthropics/sdk", "42"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "https://api.github.com/repos/anthropics/sdk/pulls/42" in log.read_text()
+
+    def test_pr_view_default_still_forgejo(self, fake_repo, fake_curl):
+        # Regression: no -R → Forgejo (unchanged behavior).
+        bin_dir, log = fake_curl
+        result = _run(["pr", "view", "7"], _env(fake_repo), bin_dir)
+        assert result.returncode == 0, result.stderr
+        assert "http://forge-forgejo:3000/api/v1/repos/alice/widgets/pulls/7" in log.read_text()
+
+    def test_issue_view_with_dash_R_overrides_config_chain(
+        self, fake_repo, fake_curl,
+    ):
+        # FORGE_GITHUB_OWNER is set; -R should override it.
+        bin_dir, log = fake_curl
+        result = _run(
+            ["issue", "view", "-R", "explicit/override", "5"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        logged = log.read_text()
+        assert "https://api.github.com/repos/explicit/override/issues/5" in logged
+        assert "ghorg" not in logged
+
+    def test_issue_list_with_dash_R(self, fake_repo, fake_curl):
+        bin_dir, log = fake_curl
+        result = _run(
+            ["issue", "list", "-R", "explicit/override"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "https://api.github.com/repos/explicit/override/issues" in log.read_text()
+
+    def test_dash_R_without_value_fails(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(
+            ["pr", "view", "7", "-R"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode != 0
+        assert "needs a value" in result.stderr
+
+
+class TestDashROnWrites:
+    """pr create rejects -R since writes always target Forgejo."""
+
+    def test_pr_create_rejects_dash_R(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(
+            ["pr", "create", "-R", "anthropics/sdk",
+             "--title", "T", "--head", "h"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode != 0
+        assert "not supported on writes" in result.stderr
+
+    def test_pr_create_rejects_long_repo(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(
+            ["pr", "create", "--repo", "anthropics/sdk",
+             "--title", "T", "--head", "h"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode != 0
+        assert "not supported on writes" in result.stderr
+
+    def test_pr_create_rejects_equals_form(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(
+            ["pr", "create", "--repo=anthropics/sdk",
+             "--title", "T", "--head", "h"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode != 0
+        assert "not supported on writes" in result.stderr
+
+
 class TestAllowlist:
     def test_rejects_unknown_subcommand(self, fake_repo, fake_curl):
         bin_dir, log = fake_curl
