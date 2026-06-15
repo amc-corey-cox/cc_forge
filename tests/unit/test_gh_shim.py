@@ -65,6 +65,10 @@ def _env(fake_repo):
     #   Forgejo target → alice/widgets (from origin remote)
     #   GitHub target  → ghorg/widgets (FORGE_GITHUB_OWNER + workspace basename)
     # The differing owners make routing easy to tell apart in assertions.
+    #
+    # In production the shim reads these from a credentials file written by
+    # forge; in tests we set them directly via env (the shim sources the file
+    # only if one exists, otherwise it falls through to whatever's in env).
     return {
         "FORGEJO_URL": "http://forge-forgejo:3000",
         "FORGEJO_TOKEN": "forgejo-test-token",
@@ -423,3 +427,87 @@ class TestRepoDetection:
         result = _run(["pr", "view", "1"], env, bin_dir)
         assert result.returncode != 0
         assert "could not read origin remote" in result.stderr
+
+
+class TestShimCredentialsContract:
+    """End-to-end contract: forge writes the credentials file → shim reads it.
+
+    This is what catches the class of bug where the shim and the docker
+    injector silently disagree about how credentials are delivered (e.g.,
+    container-hardening removed env vars, leaving the shim broken). Each side's
+    unit tests can pass while the integration fails. This test exercises both
+    sides against the actual file they share.
+    """
+
+    def _build_creds_file(self, tmp_path, **config_overrides):
+        """Run the real injector against a captured tar, extract the file."""
+        from unittest.mock import MagicMock
+        import tarfile
+        from cc_forge.config import ForgeConfig
+        from cc_forge.docker import _inject_shim_credentials
+
+        cfg = ForgeConfig(
+            forgejo_url="http://forge-forgejo:3000",
+            forgejo_token="contract-forgejo-token",
+            ollama_cpu_url="http://localhost:11434",
+            ollama_gpu_url="http://localhost:11435",
+            agent_image="t",
+            claude_model="t",
+            claude_api_key="",
+            compose_file="",
+            github_token="contract-github-token",
+            github_repo="",
+            github_owner="contract-org",
+            agent_mem_limit="4g",
+            agent_pids_limit=4096,
+            **config_overrides,
+        )
+        bufs = []
+        container = MagicMock()
+        container.put_archive = lambda _path, buf: bufs.append(buf)
+        _inject_shim_credentials(container, cfg)
+        assert bufs, "_inject_shim_credentials produced no archive"
+
+        creds_dest = tmp_path / "credentials"
+        bufs[0].seek(0)
+        with tarfile.open(fileobj=bufs[0], mode="r") as tar:
+            for member in tar.getmembers():
+                if member.name.endswith("/credentials"):
+                    creds_dest.write_bytes(tar.extractfile(member).read())
+                    break
+        assert creds_dest.exists(), "credentials file not found in tar"
+        return creds_dest
+
+    def test_shim_reads_forgejo_credentials_from_injected_file(
+        self, tmp_path, fake_repo, fake_curl,
+    ):
+        creds = self._build_creds_file(tmp_path)
+        bin_dir, log = fake_curl
+        env = {
+            # No FORGEJO_URL/TOKEN in env — they must come from the file.
+            "FORGE_SHIM_CREDS_FILE": str(creds),
+            "FORGE_WORKSPACE": str(fake_repo),
+        }
+        result = _run(["pr", "view", "1"], env, bin_dir)
+        assert result.returncode == 0, result.stderr
+        logged = log.read_text()
+        assert "http://forge-forgejo:3000/api/v1/repos/alice/widgets/pulls/1" in logged
+        assert "Authorization: token contract-forgejo-token" in logged
+
+    def test_shim_reads_github_credentials_from_injected_file(
+        self, tmp_path, fake_repo, fake_curl,
+    ):
+        creds = self._build_creds_file(tmp_path)
+        bin_dir, log = fake_curl
+        env = {
+            # No FORGE_GITHUB_TOKEN/OWNER in env — they must come from the file.
+            "FORGE_SHIM_CREDS_FILE": str(creds),
+            "FORGE_WORKSPACE": str(fake_repo),
+        }
+        result = _run(["issue", "list"], env, bin_dir)
+        assert result.returncode == 0, result.stderr
+        logged = log.read_text()
+        # Workspace basename is "widgets"; FORGE_GITHUB_OWNER from the file is
+        # "contract-org" → target is contract-org/widgets.
+        assert "https://api.github.com/repos/contract-org/widgets/issues" in logged
+        assert "Authorization: token contract-github-token" in logged

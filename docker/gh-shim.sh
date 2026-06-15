@@ -23,6 +23,15 @@ die() {
     exit 1
 }
 
+# Credentials (Forgejo + GitHub URLs/tokens, GitHub routing config) live in a
+# file written by forge at container start — not in env vars, so they are not
+# visible to `docker inspect` or other processes. Override with
+# $FORGE_SHIM_CREDS_FILE for testing.
+SHIM_CREDS_FILE="${FORGE_SHIM_CREDS_FILE:-/home/agent/.config/forge-shim/credentials}"
+if [ -f "$SHIM_CREDS_FILE" ]; then
+    set -a; . "$SHIM_CREDS_FILE"; set +a
+fi
+
 require_forgejo_env() {
     [ -n "${FORGEJO_URL:-}" ] || die "FORGEJO_URL not set"
     [ -n "${FORGEJO_TOKEN:-}" ] || die "FORGEJO_TOKEN not set"
@@ -102,9 +111,16 @@ parse_dash_R() {
         case "$1" in
             -R|--repo)
                 [ $# -ge 2 ] || die "$1 needs a value"
+                [ -n "$2" ] || die "$1 needs a non-empty value"
                 dash_R="$2"; shift 2 ;;
-            -R=*)     dash_R="${1#-R=}"; shift ;;
-            --repo=*) dash_R="${1#--repo=}"; shift ;;
+            -R=*)
+                dash_R="${1#-R=}"
+                [ -n "$dash_R" ] || die "-R= needs a non-empty value"
+                shift ;;
+            --repo=*)
+                dash_R="${1#--repo=}"
+                [ -n "$dash_R" ] || die "--repo= needs a non-empty value"
+                shift ;;
             *) positional+=("$1"); shift ;;
         esac
     done

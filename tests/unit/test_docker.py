@@ -10,12 +10,14 @@ import pytest
 from cc_forge.config import ForgeConfig
 from cc_forge.docker import (
     AGENT_UID,
+    SHIM_CREDENTIALS_PATH,
     _rewrite_url,
     _ollama_environment,
     _claude_environment,
     _claude_credentials_path,
     _copy_claude_config,
     _inject_git_credentials,
+    _inject_shim_credentials,
     _build_agent_cmd,
     save_claude_credentials,
 )
@@ -24,12 +26,16 @@ from cc_forge.docker import (
 def _make_config(**kwargs) -> ForgeConfig:
     defaults = dict(
         ollama_cpu_url="http://localhost:11434",
+        ollama_gpu_url="http://localhost:11435",
         forgejo_url="http://localhost:3000",
         forgejo_token="test-token",
         agent_image="test",
         claude_model="test-model",
         claude_api_key="",
         compose_file="",
+        github_token="",
+        github_repo="",
+        github_owner="",
         agent_mem_limit="4g",
         agent_pids_limit=4096,
     )
@@ -390,6 +396,100 @@ class TestInjectGitCredentials:
         assert not container.captured_bufs
 
 
+class TestInjectShimCredentials:
+    """Tests for _inject_shim_credentials — the file the gh shim sources."""
+
+    CREDS_PATH = ".config/forge-shim/credentials"
+
+    def _capture_container(self):
+        container = MagicMock()
+        container.captured_bufs = []
+
+        def capture_put_archive(path, buf):
+            container.captured_bufs.append((path, buf))
+
+        container.put_archive = capture_put_archive
+        return container
+
+    def _read_creds(self, container):
+        assert container.captured_bufs, "put_archive was never called"
+        _, buf = container.captured_bufs[0]
+        buf.seek(0)
+        with tarfile.open(fileobj=buf, mode="r") as tar:
+            return tar.extractfile(self.CREDS_PATH).read().decode()
+
+    def test_writes_credentials_file_with_all_keys(self):
+        config = _make_config(
+            forgejo_token="ft", github_token="gt",
+            github_repo="gr/repo", github_owner="go",
+        )
+        container = self._capture_container()
+        _inject_shim_credentials(container, config)
+
+        _, buf = container.captured_bufs[0]
+        members = _inspect_tar(buf)
+        assert self.CREDS_PATH in members
+        assert members[self.CREDS_PATH].mode == 0o600
+        assert members[self.CREDS_PATH].uid == AGENT_UID
+
+        content = self._read_creds(container)
+        for key in ("FORGEJO_URL", "FORGEJO_TOKEN", "FORGE_GITHUB_TOKEN",
+                    "FORGE_GITHUB_REPO", "FORGE_GITHUB_OWNER"):
+            assert f"{key}=" in content
+
+    def test_rewrites_forgejo_url_to_container_hostname(self):
+        config = _make_config(
+            forgejo_url="http://localhost:3000", forgejo_token="t",
+        )
+        container = self._capture_container()
+        _inject_shim_credentials(container, config)
+        assert "forge-forgejo:3000" in self._read_creds(container)
+        assert "localhost" not in self._read_creds(container)
+
+    def test_quotes_values_safely_for_shell_sourcing(self):
+        """Values with shell metacharacters must round-trip through bash sourcing."""
+        import subprocess
+        tricky_token = "ab cd$ef'gh\"ij;kl"
+        config = _make_config(forgejo_token=tricky_token)
+        container = self._capture_container()
+        _inject_shim_credentials(container, config)
+        content = self._read_creds(container)
+        # Source the content and echo back the token.
+        result = subprocess.run(
+            ["bash", "-c",
+             "set -a; . /dev/stdin; set +a; printf '%s' \"$FORGEJO_TOKEN\""],
+            input=content, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == tricky_token
+
+    def test_writes_only_set_keys(self):
+        # GitHub config absent → only Forgejo lines.
+        config = _make_config(forgejo_token="t")  # no github_*
+        container = self._capture_container()
+        _inject_shim_credentials(container, config)
+        content = self._read_creds(container)
+        assert "FORGEJO_TOKEN=" in content
+        assert "FORGE_GITHUB_TOKEN=" not in content
+        assert "FORGE_GITHUB_REPO=" not in content
+        assert "FORGE_GITHUB_OWNER=" not in content
+
+    def test_skips_when_nothing_to_write(self):
+        # No tokens, no urls → no file.
+        config = _make_config(forgejo_token="", forgejo_url="")
+        container = self._capture_container()
+        _inject_shim_credentials(container, config)
+        assert not container.captured_bufs
+
+    def test_path_constant_matches_shim_path(self):
+        # The Python constant docker.py uses must match the path the shim sources.
+        # If either side moves, this test breaks loudly.
+        assert SHIM_CREDENTIALS_PATH == "/home/agent/.config/forge-shim/credentials"
+        # And the relative tar path is consistent with the absolute one.
+        # /home/agent + /.config/... — the tar is rooted at /home/agent.
+        assert SHIM_CREDENTIALS_PATH.endswith("/" + self.CREDS_PATH)
+
+
 class TestRunAgentContainer:
     """Tests for run_agent_container configuration."""
 
@@ -415,11 +515,18 @@ class TestRunAgentContainer:
         return client, container, result
 
     def test_token_not_in_env_vars(self):
-        client, container, _ = self._run()
+        client, container, _ = self._run(
+            github_token="g", github_repo="o/r", github_owner="o",
+        )
         create_kwargs = client.containers.create.call_args
         env = create_kwargs.kwargs["environment"]
-        assert "FORGEJO_TOKEN" not in env
-        assert "FORGEJO_URL" not in env
+        # All secrets/identifiers must reach the shim via the credentials file,
+        # never as container env vars (visible to docker inspect).
+        for forbidden in (
+            "FORGEJO_URL", "FORGEJO_TOKEN",
+            "FORGE_GITHUB_TOKEN", "FORGE_GITHUB_REPO", "FORGE_GITHUB_OWNER",
+        ):
+            assert forbidden not in env
 
     def test_resource_limits_applied(self):
         client, _, _ = self._run(agent_mem_limit="2g", agent_pids_limit=1024)
