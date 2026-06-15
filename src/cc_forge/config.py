@@ -110,6 +110,23 @@ class ForgeConfig:
     agent_mem_limit: str = field(default_factory=lambda: _resolve("FORGE_AGENT_MEM_LIMIT"))
     agent_pids_limit: int = field(default_factory=lambda: _resolve_int("FORGE_AGENT_PIDS_LIMIT"))
 
+    def resolve_github_repo(self, repo_name: str) -> str:
+        """Resolve the GitHub 'owner/repo' destination, mirroring the gh-shim chain.
+
+        FORGE_GITHUB_REPO (explicit owner/repo) > FORGE_GITHUB_OWNER + repo_name > error.
+        """
+        if self.github_repo:
+            if "/" not in self.github_repo:
+                raise ValueError(
+                    f"FORGE_GITHUB_REPO must be 'owner/repo', got {self.github_repo!r}"
+                )
+            return self.github_repo
+        if self.github_owner:
+            return f"{self.github_owner}/{repo_name}"
+        raise ValueError(
+            "Cannot resolve GitHub repo: set FORGE_GITHUB_REPO or FORGE_GITHUB_OWNER."
+        )
+
 
 def load_config() -> ForgeConfig:
     return ForgeConfig()

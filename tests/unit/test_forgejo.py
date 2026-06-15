@@ -102,3 +102,19 @@ def test_error_on_auth_failure(client: ForgejoClient, httpx_mock) -> None:
     )
     with pytest.raises(ForgejoError, match="401"):
         client.get_current_user()
+
+
+def test_get_pull_request(client: ForgejoClient, httpx_mock) -> None:
+    httpx_mock.add_response(
+        url="http://localhost:3000/api/v1/repos/admin/myrepo/pulls/7",
+        json={
+            "title": "Add feature",
+            "body": "Does the thing.",
+            "head": {"ref": "agent/feature"},
+            "base": {"ref": "main"},
+        },
+    )
+    pr = client.get_pull_request("admin", "myrepo", 7)
+    assert pr["head"]["ref"] == "agent/feature"
+    assert pr["base"]["ref"] == "main"
+    assert pr["title"] == "Add feature"
