@@ -1,18 +1,22 @@
 #!/bin/bash
-# Forgejo-backed `gh` CLI shim for the forge agent container.
+# `gh` CLI shim for the forge agent container.
 #
 # The agent's training prior is to reach for `gh`. We install this script as
 # /usr/local/bin/gh so that `gh pr create`, `gh issue view`, etc. translate
-# to Forgejo REST API calls instead of failing.
+# to the right backend instead of failing.
+#
+# Routing rules (by subcommand, not by flag):
+#   pr ... ........ Forgejo workspace (write+read, via $FORGEJO_*)
+#   issue ... ..... GitHub (read-only, via $FORGE_GITHUB_TOKEN)
 #
 # Supported subcommands (allowlist):
-#   gh pr create --title T --head B [--base B] [--body B]
-#   gh pr view <number>
-#   gh issue view <number>
-#   gh issue list
+#   gh pr create --title T --head B [--base B] [--body B]   -> Forgejo
+#   gh pr view <number>                                     -> Forgejo
+#   gh issue view <number>                                  -> GitHub
+#   gh issue list                                           -> GitHub
 #
-# Output is the raw Forgejo API JSON. Anything outside the allowlist exits
-# with a clear message naming what's supported.
+# Output is the raw underlying API's JSON response. Anything outside the
+# allowlist exits with a clear message naming what's supported.
 
 set -euo pipefail
 
@@ -21,16 +25,20 @@ die() {
     exit 1
 }
 
-require_env() {
+require_forgejo_env() {
     [ -n "${FORGEJO_URL:-}" ] || die "FORGEJO_URL not set"
     [ -n "${FORGEJO_TOKEN:-}" ] || die "FORGEJO_TOKEN not set"
+}
+
+require_github_env() {
+    [ -n "${FORGE_GITHUB_TOKEN:-}" ] || die "FORGE_GITHUB_TOKEN not set (required for GitHub access)"
 }
 
 # Override with FORGE_WORKSPACE for testing outside the container.
 WORKSPACE="${FORGE_WORKSPACE:-/workspace/repo}"
 
-# Derive owner/repo from the workspace origin remote.
-detect_repo() {
+# Derive owner/repo from the workspace origin remote (Forgejo).
+detect_forgejo_repo() {
     local url owner_repo
     url=$(git -C "$WORKSPACE" remote get-url origin 2>/dev/null) \
         || die "could not read origin remote from $WORKSPACE"
@@ -45,7 +53,21 @@ detect_repo() {
     echo "$owner_repo"
 }
 
-api_get() {
+# Resolve the GitHub owner/repo for the current workspace.
+# Precedence: FORGE_GITHUB_REPO > FORGE_GITHUB_OWNER + workspace repo basename.
+detect_github_repo() {
+    if [ -n "${FORGE_GITHUB_REPO:-}" ]; then
+        echo "$FORGE_GITHUB_REPO"
+    elif [ -n "${FORGE_GITHUB_OWNER:-}" ]; then
+        local forgejo_repo
+        forgejo_repo=$(detect_forgejo_repo)
+        echo "$FORGE_GITHUB_OWNER/$(basename "$forgejo_repo")"
+    else
+        die "cannot route to GitHub: set FORGE_GITHUB_REPO=owner/repo or FORGE_GITHUB_OWNER=owner"
+    fi
+}
+
+forgejo_get() {
     local path="$1"
     curl -sf \
         -H "Authorization: token $FORGEJO_TOKEN" \
@@ -53,7 +75,7 @@ api_get() {
         "$FORGEJO_URL/api/v1/$path"
 }
 
-api_post() {
+forgejo_post() {
     local path="$1" body="$2"
     curl -sf -X POST \
         -H "Authorization: token $FORGEJO_TOKEN" \
@@ -63,8 +85,17 @@ api_post() {
         "$FORGEJO_URL/api/v1/$path"
 }
 
+github_get() {
+    local path="$1"
+    curl -sf \
+        -H "Authorization: token $FORGE_GITHUB_TOKEN" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/$path"
+}
+
 cmd_pr_create() {
-    require_env
+    require_forgejo_env
     local title="" head="" base="main" body=""
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -79,38 +110,38 @@ cmd_pr_create() {
     [ -n "$head" ]  || die "--head is required for 'pr create'"
 
     local owner_repo payload
-    owner_repo=$(detect_repo)
+    owner_repo=$(detect_forgejo_repo)
     payload=$(jq -nc \
         --arg title "$title" \
         --arg head "$head" \
         --arg base "$base" \
         --arg body "$body" \
         '{title: $title, head: $head, base: $base, body: $body}')
-    api_post "repos/$owner_repo/pulls" "$payload"
+    forgejo_post "repos/$owner_repo/pulls" "$payload"
 }
 
 cmd_pr_view() {
-    require_env
+    require_forgejo_env
     [ $# -eq 1 ] || die "'pr view' takes exactly one argument (the PR number)"
     local owner_repo
-    owner_repo=$(detect_repo)
-    api_get "repos/$owner_repo/pulls/$1"
+    owner_repo=$(detect_forgejo_repo)
+    forgejo_get "repos/$owner_repo/pulls/$1"
 }
 
 cmd_issue_view() {
-    require_env
+    require_github_env
     [ $# -eq 1 ] || die "'issue view' takes exactly one argument (the issue number)"
     local owner_repo
-    owner_repo=$(detect_repo)
-    api_get "repos/$owner_repo/issues/$1"
+    owner_repo=$(detect_github_repo)
+    github_get "repos/$owner_repo/issues/$1"
 }
 
 cmd_issue_list() {
-    require_env
+    require_github_env
     [ $# -eq 0 ] || die "'issue list' takes no arguments"
     local owner_repo
-    owner_repo=$(detect_repo)
-    api_get "repos/$owner_repo/issues"
+    owner_repo=$(detect_github_repo)
+    github_get "repos/$owner_repo/issues"
 }
 
 case "${1:-}" in

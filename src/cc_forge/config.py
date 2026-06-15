@@ -34,6 +34,9 @@ _DEFAULTS = {
     "FORGE_CLAUDE_MODEL": "qwen3-coder-32k",
     "FORGE_CLAUDE_API_KEY": "",
     "FORGE_COMPOSE_FILE": "",
+    "FORGE_GITHUB_TOKEN": "",
+    "FORGE_GITHUB_REPO": "",
+    "FORGE_GITHUB_OWNER": "",
 }
 
 _ENV_FILES = [
@@ -90,6 +93,9 @@ class ForgeConfig:
         or os.environ.get("ANTHROPIC_API_KEY", "")
     )
     compose_file: str = field(default_factory=lambda: _resolve("FORGE_COMPOSE_FILE"))
+    github_token: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_TOKEN"))
+    github_repo: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_REPO"))
+    github_owner: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_OWNER"))
 
 
 def load_config() -> ForgeConfig:

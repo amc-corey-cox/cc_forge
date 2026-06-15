@@ -248,6 +248,16 @@ def run_agent_container(
         "FORGE_AGENT": agent,
     }
 
+    # Inject GitHub credentials/routing for the gh shim's read-only path.
+    # Conditional add: don't set empty env vars when the host config is empty,
+    # so the shim's "not set" error messages stay accurate.
+    if config.github_token:
+        environment["FORGE_GITHUB_TOKEN"] = config.github_token
+    if config.github_repo:
+        environment["FORGE_GITHUB_REPO"] = config.github_repo
+    if config.github_owner:
+        environment["FORGE_GITHUB_OWNER"] = config.github_owner
+
     if claude_passthrough:
         environment.update(_claude_environment(config))
     else:

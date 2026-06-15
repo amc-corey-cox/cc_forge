@@ -61,9 +61,15 @@ def _run(args, env, bin_dir):
 
 
 def _env(fake_repo):
+    # Workspace origin = http://forge-forgejo:3000/alice/widgets.git
+    #   Forgejo target → alice/widgets (from origin remote)
+    #   GitHub target  → ghorg/widgets (FORGE_GITHUB_OWNER + workspace basename)
+    # The differing owners make routing easy to tell apart in assertions.
     return {
         "FORGEJO_URL": "http://forge-forgejo:3000",
-        "FORGEJO_TOKEN": "test-token",
+        "FORGEJO_TOKEN": "forgejo-test-token",
+        "FORGE_GITHUB_TOKEN": "github-test-token",
+        "FORGE_GITHUB_OWNER": "ghorg",
         "FORGE_WORKSPACE": str(fake_repo),
     }
 
@@ -80,7 +86,7 @@ class TestPrCreate:
         logged = log.read_text()
         assert "http://forge-forgejo:3000/api/v1/repos/alice/widgets/pulls" in logged
         assert "POST" in logged
-        assert "Authorization: token test-token" in logged
+        assert "Authorization: token forgejo-test-token" in logged
         assert '"title":"Fix typo"' in logged
         assert '"head":"topic"' in logged
         assert '"base":"main"' in logged  # default base
@@ -144,15 +150,15 @@ class TestPrView:
 
 
 class TestIssueView:
-    def test_gets_issue_by_number(self, fake_repo, fake_curl):
+    def test_routes_to_github_with_github_credentials(self, fake_repo, fake_curl):
         bin_dir, log = fake_curl
         result = _run(["issue", "view", "12"], _env(fake_repo), bin_dir)
         assert result.returncode == 0, result.stderr
         logged = log.read_text()
-        assert (
-            "http://forge-forgejo:3000/api/v1/repos/alice/widgets/issues/12"
-            in logged
-        )
+        assert "https://api.github.com/repos/ghorg/widgets/issues/12" in logged
+        # GitHub auth used, Forgejo auth not leaked into this call
+        assert "token github-test-token" in logged
+        assert "token forgejo-test-token" not in logged
 
     def test_extra_args_rejected(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl
@@ -162,21 +168,60 @@ class TestIssueView:
 
 
 class TestIssueList:
-    def test_lists_issues(self, fake_repo, fake_curl):
+    def test_routes_to_github(self, fake_repo, fake_curl):
         bin_dir, log = fake_curl
         result = _run(["issue", "list"], _env(fake_repo), bin_dir)
         assert result.returncode == 0, result.stderr
         logged = log.read_text()
-        assert (
-            "http://forge-forgejo:3000/api/v1/repos/alice/widgets/issues"
-            in logged
-        )
+        assert "https://api.github.com/repos/ghorg/widgets/issues" in logged
 
     def test_any_args_rejected(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl
         result = _run(["issue", "list", "--state", "all"], _env(fake_repo), bin_dir)
         assert result.returncode != 0
         assert "takes no arguments" in result.stderr
+
+
+class TestGithubRouting:
+    def test_forge_github_repo_overrides_owner(self, fake_repo, fake_curl):
+        bin_dir, log = fake_curl
+        env = _env(fake_repo)
+        env["FORGE_GITHUB_REPO"] = "explicit/override"
+        # FORGE_GITHUB_OWNER is also set — REPO should win.
+        result = _run(["issue", "view", "5"], env, bin_dir)
+        assert result.returncode == 0, result.stderr
+        logged = log.read_text()
+        assert "https://api.github.com/repos/explicit/override/issues/5" in logged
+        assert "ghorg" not in logged
+
+    def test_missing_github_token_fails_clearly(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        env = _env(fake_repo)
+        env.pop("FORGE_GITHUB_TOKEN")
+        result = _run(["issue", "list"], env, bin_dir)
+        assert result.returncode != 0
+        assert "FORGE_GITHUB_TOKEN not set" in result.stderr
+
+    def test_missing_routing_config_fails_clearly(self, fake_repo, fake_curl):
+        # Token set but neither REPO nor OWNER set → can't resolve target.
+        bin_dir, _ = fake_curl
+        env = _env(fake_repo)
+        env.pop("FORGE_GITHUB_OWNER")
+        result = _run(["issue", "list"], env, bin_dir)
+        assert result.returncode != 0
+        assert "cannot route to GitHub" in result.stderr
+
+    def test_pr_commands_unaffected_when_github_not_configured(
+        self, fake_repo, fake_curl,
+    ):
+        # PR ops should keep working even with no GitHub creds in env.
+        bin_dir, log = fake_curl
+        env = _env(fake_repo)
+        env.pop("FORGE_GITHUB_TOKEN")
+        env.pop("FORGE_GITHUB_OWNER")
+        result = _run(["pr", "view", "7"], env, bin_dir)
+        assert result.returncode == 0, result.stderr
+        assert "http://forge-forgejo:3000/api/v1/repos/alice/widgets/pulls/7" in log.read_text()
 
 
 class TestAllowlist:
@@ -231,11 +276,14 @@ class TestEnvironment:
 
 
 class TestRepoDetection:
+    """Forgejo origin parsing. Exercised through `pr view` because that's the
+    code path that consults the workspace's origin remote directly."""
+
     def test_parses_owner_repo_from_http_remote(self, fake_repo, fake_curl):
         bin_dir, log = fake_curl
-        result = _run(["issue", "list"], _env(fake_repo), bin_dir)
+        result = _run(["pr", "view", "1"], _env(fake_repo), bin_dir)
         assert result.returncode == 0
-        assert "/repos/alice/widgets/issues" in log.read_text()
+        assert "/repos/alice/widgets/pulls/1" in log.read_text()
 
     def test_handles_ssh_style_remote(self, tmp_path, fake_curl):
         repo = tmp_path / "ws"
@@ -252,9 +300,9 @@ class TestRepoDetection:
             "FORGEJO_TOKEN": "tok",
             "FORGE_WORKSPACE": str(repo),
         }
-        result = _run(["issue", "list"], env, bin_dir)
+        result = _run(["pr", "view", "1"], env, bin_dir)
         assert result.returncode == 0, result.stderr
-        assert "/repos/bob/thing/issues" in log.read_text()
+        assert "/repos/bob/thing/pulls/1" in log.read_text()
 
     def test_no_origin_fails_clearly(self, tmp_path, fake_curl):
         repo = tmp_path / "ws"
@@ -266,6 +314,6 @@ class TestRepoDetection:
             "FORGEJO_TOKEN": "tok",
             "FORGE_WORKSPACE": str(repo),
         }
-        result = _run(["issue", "list"], env, bin_dir)
+        result = _run(["pr", "view", "1"], env, bin_dir)
         assert result.returncode != 0
         assert "could not read origin remote" in result.stderr
