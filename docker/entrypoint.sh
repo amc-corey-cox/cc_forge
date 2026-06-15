@@ -9,16 +9,14 @@ if [ -z "$REPO_URL" ]; then
     exit 1
 fi
 
-# Configure git credential helper for token-based Forgejo auth
-if [ -n "$FORGEJO_TOKEN" ] && [ -n "$FORGEJO_URL" ]; then
-    # Extract protocol and host from FORGEJO_URL
+# Forge injects .git-credentials before start; fall back to env vars for manual runs.
+if [ ! -f "$HOME/.git-credentials" ] && [ -n "$FORGEJO_TOKEN" ] && [ -n "$FORGEJO_URL" ]; then
     FORGEJO_PROTO=$(echo "$FORGEJO_URL" | sed 's|://.*||')
     FORGEJO_HOST=$(echo "$FORGEJO_URL" | sed 's|https\?://||' | sed 's|/.*||')
-    # Write credentials file with restrictive permissions
-    CRED_FILE="$HOME/.git-credentials"
-    echo "${FORGEJO_PROTO}://forge-agent:${FORGEJO_TOKEN}@${FORGEJO_HOST}" > "$CRED_FILE"
-    chmod 600 "$CRED_FILE"
-    git config --global credential.helper "store --file=$CRED_FILE"
+    # Percent-encode the token so reserved chars (@ : /) don't corrupt the URL.
+    ENC_TOKEN=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$FORGEJO_TOKEN")
+    echo "${FORGEJO_PROTO}://forge-agent:${ENC_TOKEN}@${FORGEJO_HOST}" > "$HOME/.git-credentials"
+    chmod 600 "$HOME/.git-credentials"
 fi
 
 echo "Cloning $REPO_URL (branch: ${REPO_BRANCH:-main})..."
