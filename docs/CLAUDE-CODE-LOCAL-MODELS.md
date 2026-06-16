@@ -27,7 +27,7 @@ _Will be populated after the first matrix pass. Until then, no recommendation �
 
 Before running an eval pass:
 
-- Ollama is reachable on a docker-bridge-accessible interface (not localhost-only). See the [Ollama systemd notes](LOCAL-OLLAMA-SETUP.md#stock-ollamaservice-reactivation-after-upgrades) — a stock `ollama.service` taking over port 11434 silently breaks this.
+- Ollama is reachable on a docker-bridge-accessible interface (not localhost-only). See [`LOCAL-OLLAMA-SETUP.md`](LOCAL-OLLAMA-SETUP.md) — a stock `ollama.service` taking over port 11434 silently breaks this.
 - The agent image is built (`docker images cc-forge-agent:latest`).
 - The `forge-network` exists and `forge-ollama-proxy` is running.
 - The candidate models are pulled (`ollama list` should include each).
