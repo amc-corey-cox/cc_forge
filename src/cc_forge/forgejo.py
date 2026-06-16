@@ -77,3 +77,8 @@ class ForgejoClient:
         """Return the HTTP clone URL for a repository."""
         resp = self._request("GET", f"/repos/{owner}/{repo}")
         return resp.json()["clone_url"]
+
+    def get_pull_request(self, owner: str, repo: str, index: int) -> dict:
+        """Fetch a pull request's metadata (head/base refs, title, body, url)."""
+        resp = self._request("GET", f"/repos/{owner}/{repo}/pulls/{index}")
+        return resp.json()

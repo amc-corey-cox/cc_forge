@@ -39,6 +39,21 @@ def run(repo: str, agent: str, claude_passthrough: bool) -> None:
 
 
 @main.command()
+@click.argument("pr", type=int)
+@click.option("--repo", default=".", help="Path to git repository (default: current directory).")
+@click.option("--remote", default="origin",
+              help="Git remote pointing at the GitHub destination (default: origin).")
+def promote(pr: int, repo: str, remote: str) -> None:
+    """Promote a Forgejo PR to a GitHub PR."""
+    from cc_forge.config import load_config
+    from cc_forge.promote import promote_pull_request
+
+    cfg = load_config()
+    url = promote_pull_request(cfg, pr, repo_path=repo, remote=remote)
+    click.echo(url)
+
+
+@main.command()
 def status() -> None:
     """Show running forge sessions."""
     from cc_forge.docker import list_forge_containers

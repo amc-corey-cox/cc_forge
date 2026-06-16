@@ -64,8 +64,9 @@ def add_remote(path: str | Path, name: str, url: str) -> None:
     _run(["remote", "add", name, url], cwd=path)
 
 
-def push_to_remote(path: str | Path, remote: str, branch: str) -> None:
-    _run(["push", "-u", remote, branch], cwd=path)
+def push_to_remote(path: str | Path, remote: str, branch: str, set_upstream: bool = True) -> None:
+    args = ["push", "-u", remote, branch] if set_upstream else ["push", remote, branch]
+    _run(args, cwd=path)
 
 
 def set_remote_url(path: str | Path, name: str, url: str) -> None:
@@ -74,3 +75,12 @@ def set_remote_url(path: str | Path, name: str, url: str) -> None:
 
 def get_remote_url(path: str | Path, name: str) -> str:
     return _run(["remote", "get-url", name], cwd=path)
+
+
+def fetch_remote(path: str | Path, remote: str) -> None:
+    _run(["fetch", remote], cwd=path)
+
+
+def create_branch_from_ref(path: str | Path, branch: str, start_ref: str) -> None:
+    """Create (or reset) a local branch pointing at start_ref."""
+    _run(["branch", "-f", branch, start_ref], cwd=path)
