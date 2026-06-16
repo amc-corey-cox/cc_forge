@@ -1,0 +1,1 @@
+Implement the `is_palindrome` function in palindrome.py so that `python3 check.py` passes.
