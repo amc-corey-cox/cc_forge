@@ -33,19 +33,36 @@ eval-results/<run-id>/
         ├── prompt.txt      # Copy of the task's prompt for context
         ├── output.json     # Full claude -p response (parse with jq)
         ├── stderr.log      # Anything claude or docker wrote to stderr
-        └── meta.json       # {model, task, duration_s, ollama_url, timestamp}
+        ├── setup.log       # setup.sh output (only if task has setup.sh)
+        ├── score.log       # score.sh output (only if task has score.sh)
+        ├── score-exit      # score.sh exit code (only if task has score.sh)
+        ├── workspace/      # Final state of /workspace after the run
+        └── meta.json       # {model, task, duration_s, exit_code, score?, ollama_url, timestamp}
 ```
 
 ## Tasks
 
-A task is just a directory under `scripts/eval/tasks/<NN-name>/` containing:
+A task is a directory under `scripts/eval/tasks/<NN-name>/`. Files (all optional except `prompt.txt`):
 
-- `prompt.txt` — the user message sent to `claude -p`
-- `expect.md` — human-readable success criteria for grading the run
+| File | Required | What it does |
+|------|----------|--------------|
+| `prompt.txt` | yes | The user message sent to `claude -p`. |
+| `setup.sh` | no | Runs in the container before `claude -p`, with `cwd=/workspace`. Populates the workspace (write files, `git init`, etc.). Failure aborts the run with exit 90. |
+| `score.sh` | no | Runs in the container after `claude -p`, with `cwd=/workspace`. Exit 0 = pass, non-zero = fail. Result is captured in `meta.json` as `"score"`. |
+| `expect.md` | no | Human-readable success criteria. For tasks without `score.sh`, this is the grading reference. |
 
 Tasks are run in lexical order. Prefix names with `01-`, `02-`, etc. to control ordering.
 
-`01-sanity-pong/` is provided as the minimal smoke task — it validates the harness works end-to-end and produces ~3 tokens of output, so it finishes fast even with a fully cold model. Add real tasks as separate directories.
+### Inside the container, a task sees three mount points
+
+- `/workspace` — fresh per run. Setup writes here, the agent works here, score reads here. Captured at `eval-results/.../<task>/workspace/` after the run.
+- `/task` — read-only mount of the task source directory. `setup.sh`, `score.sh`, and any fixtures the task ships with are reachable here.
+- `/meta` — read-write mount of the result directory. The harness writes `output.json`, `stderr.log`, `setup.log`, etc. here; you don't normally touch it from inside the container.
+
+### Existing tasks
+
+- `01-sanity-pong/` — minimal smoke. No `setup.sh`, no `score.sh`. Validates the harness end-to-end with a trivial prompt that produces ~3 tokens. Finishes fast even on a fully cold model. Use this when iterating on the harness itself, not when evaluating models.
+- `02-fix-typo/` — first real capability task. Workspace contains a `README.md` with a typo; agent must find and fix it; `score.sh` verifies the file now contains `Hello World`. Small enough to keep wall-clock cost bounded.
 
 ---
 
