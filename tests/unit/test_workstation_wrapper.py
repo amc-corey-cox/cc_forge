@@ -212,3 +212,10 @@ def test_promote_fails_when_pr_show_fails(shim_bin, tmp_path):
     assert proc.returncode == 1
     assert "could not read PR 4" in proc.stderr
     assert "gh pr create" not in log
+
+
+def test_promote_rejects_invalid_metadata(shim_bin, tmp_path):
+    proc, log = run_wrapper(shim_bin, tmp_path, ["promote", "4"], PR_META_JSON="not json")
+    assert proc.returncode == 1
+    assert "invalid PR metadata" in proc.stderr
+    assert "gh pr create" not in log

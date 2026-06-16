@@ -74,7 +74,7 @@ def pr_metadata(config: ForgeConfig, pr_number: int, repo_name: str) -> dict:
         with ForgejoClient(config) as forgejo:
             owner = forgejo.get_current_user()
             pr = forgejo.get_pull_request(owner, repo_name, pr_number)
-    except (httpx.ConnectError, httpx.TimeoutException) as e:
+    except httpx.RequestError as e:
         raise click.ClickException(f"Forgejo unreachable at {config.forgejo_url}: {e}")
     except ForgejoError as e:
         raise click.ClickException(f"Forgejo: {e}")
@@ -83,6 +83,7 @@ def pr_metadata(config: ForgeConfig, pr_number: int, repo_name: str) -> dict:
         "base": pr["base"]["ref"],
         "title": pr["title"],
         "body": pr.get("body") or "",
+        "url": pr.get("html_url", ""),
     }
 
 

@@ -16,6 +16,7 @@ PR = {
     "body": "Body.",
     "head": {"ref": "agent/feature"},
     "base": {"ref": "main"},
+    "html_url": "http://localhost:3000/cc_forge_admin/cc_forge/pulls/7",
 }
 
 
@@ -141,17 +142,19 @@ def test_pr_metadata_happy(monkeypatch):
     meta = promote_mod.pr_metadata(_config(), 7, "cc_forge")
     assert meta == {
         "head": "agent/feature", "base": "main", "title": "Add feature", "body": "Body.",
+        "url": "http://localhost:3000/cc_forge_admin/cc_forge/pulls/7",
     }
 
 
-def test_pr_metadata_unreachable(monkeypatch):
+@pytest.mark.parametrize("err", ["ConnectError", "ReadError", "ProtocolError"])
+def test_pr_metadata_unreachable(monkeypatch, err):
     import httpx
 
     def boom(c):
         m = MagicMock()
         m.__enter__.return_value = m
         m.__exit__.return_value = False
-        m.get_current_user.side_effect = httpx.ConnectError("refused")
+        m.get_current_user.side_effect = getattr(httpx, err)("boom")
         return m
 
     monkeypatch.setattr(promote_mod, "ForgejoClient", boom)
