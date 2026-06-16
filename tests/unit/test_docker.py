@@ -300,23 +300,22 @@ class TestCopyClaudeConfig:
         assert claude_dir.mode == 0o755
         assert claude_dir.uid == AGENT_UID
 
-    def test_claude_md_injected_from_docker_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("cc_forge.docker._forge_claude_state_dir", lambda: tmp_path / "nonexistent")
-
+    def test_agent_instructions_injected_for_all_harnesses(self, tmp_path):
         docker_dir = tmp_path / "docker"
         docker_dir.mkdir()
-        (docker_dir / "CLAUDE.md").write_bytes(b"# Agent instructions")
+        (docker_dir / "AGENTS.md").write_bytes(b"# Agent instructions")
 
-        config = _make_config(
-            claude_api_key="sk-test",
-            compose_file=str(docker_dir / "docker-compose.yml"),
-        )
+        config = _make_config(compose_file=str(docker_dir / "docker-compose.yml"))
         container = self._capture_container()
 
-        _copy_claude_config(container, config)
+        from cc_forge.docker import _inject_agent_instructions
+        _inject_agent_instructions(container, config)
 
-        content = self._get_tar_content(container, ".claude/CLAUDE.md")
-        assert content == b"# Agent instructions"
+        # Claude reads ~/.claude/CLAUDE.md; the canonical AGENTS.md lives in home;
+        # aider is pointed at it via ~/.aider.conf.yml.
+        assert self._get_tar_content(container, ".claude/CLAUDE.md") == b"# Agent instructions"
+        assert self._get_tar_content(container, "AGENTS.md") == b"# Agent instructions"
+        assert b"/home/agent/AGENTS.md" in self._get_tar_content(container, ".aider.conf.yml")
 
 
 class TestInjectGitCredentials:
@@ -503,7 +502,8 @@ class TestRunAgentContainer:
         client.containers.create.return_value = container
 
         with patch("cc_forge.docker._docker_client", return_value=client), \
-                patch("cc_forge.docker._copy_claude_config"):
+                patch("cc_forge.docker._copy_claude_config"), \
+                patch("cc_forge.docker._inject_agent_instructions"):
             from cc_forge.docker import run_agent_container
             result = run_agent_container(
                 config,
@@ -555,6 +555,22 @@ class TestRunAgentContainer:
         _, container, _ = self._run()
         # put_archive should be called for git credentials
         container.put_archive.assert_called()
+
+    def test_agent_instructions_injected_for_non_passthrough(self):
+        # The instructions must reach every harness, not just claude_passthrough.
+        config = _make_config()
+        client = MagicMock()
+        client.images.get.return_value = True
+        client.containers.create.return_value = MagicMock(id="x")
+        with patch("cc_forge.docker._docker_client", return_value=client), \
+                patch("cc_forge.docker._copy_claude_config"), \
+                patch("cc_forge.docker._inject_agent_instructions") as inject:
+            from cc_forge.docker import run_agent_container
+            run_agent_container(
+                config, repo_url="http://localhost:3000/u/r.git",
+                branch="main", repo_name="repo", claude_passthrough=False,
+            )
+        inject.assert_called_once()
 
 
 class TestSaveClaudeCredentials:
