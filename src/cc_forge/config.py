@@ -34,6 +34,9 @@ _DEFAULTS = {
     "FORGE_CLAUDE_MODEL": "qwen3-coder-32k",
     "FORGE_CLAUDE_API_KEY": "",
     "FORGE_COMPOSE_FILE": "",
+    "FORGE_GITHUB_TOKEN": "",
+    "FORGE_GITHUB_REPO": "",
+    "FORGE_GITHUB_OWNER": "",
     "FORGE_AGENT_MEM_LIMIT": "4g",
     "FORGE_AGENT_PIDS_LIMIT": "4096",
 }
@@ -101,6 +104,9 @@ class ForgeConfig:
         or os.environ.get("ANTHROPIC_API_KEY", "")
     )
     compose_file: str = field(default_factory=lambda: _resolve("FORGE_COMPOSE_FILE"))
+    github_token: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_TOKEN"))
+    github_repo: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_REPO"))
+    github_owner: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_OWNER"))
     agent_mem_limit: str = field(default_factory=lambda: _resolve("FORGE_AGENT_MEM_LIMIT"))
     agent_pids_limit: int = field(default_factory=lambda: _resolve_int("FORGE_AGENT_PIDS_LIMIT"))
 

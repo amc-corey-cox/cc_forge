@@ -245,6 +245,53 @@ def _inject_git_credentials(container, config: ForgeConfig) -> None:
     container.put_archive("/home/agent", buf)
 
 
+# Path the gh shim sources its credentials from. Must match the value in
+# docker/gh-shim.sh. Documented as a constant so the producer and consumer of
+# the file reference the same location.
+SHIM_CREDENTIALS_PATH = "/home/agent/.config/forge-shim/credentials"
+
+
+def _inject_shim_credentials(container, config: ForgeConfig) -> None:
+    """Write the gh-shim credentials file into the container.
+
+    The shim sources this file at startup. Tokens go into a 0600 file rather
+    than env vars so they are not visible to `docker inspect` or sibling
+    processes inside the container.
+    """
+    import io
+    import shlex
+    import tarfile
+
+    # Each pair: (env var name the shim expects, config value to write)
+    pairs: list[tuple[str, str]] = []
+    if config.forgejo_url:
+        pairs.append(("FORGEJO_URL", _rewrite_url(config.forgejo_url, "forge-forgejo")))
+    if config.forgejo_token:
+        pairs.append(("FORGEJO_TOKEN", config.forgejo_token))
+    if config.github_token:
+        pairs.append(("FORGE_GITHUB_TOKEN", config.github_token))
+    if config.github_repo:
+        pairs.append(("FORGE_GITHUB_REPO", config.github_repo))
+    if config.github_owner:
+        pairs.append(("FORGE_GITHUB_OWNER", config.github_owner))
+
+    if not pairs:
+        return
+
+    lines = [f"{key}={shlex.quote(value)}\n" for key, value in pairs]
+    content = "".join(lines).encode()
+
+    # SHIM_CREDENTIALS_PATH = /home/agent/.config/forge-shim/credentials.
+    # We need to create the .config and forge-shim directories, then the file.
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        _add_tar_dir(tar, ".config/")
+        _add_tar_dir(tar, ".config/forge-shim/")
+        _add_tar_file(tar, ".config/forge-shim/credentials", content, mode=0o600)
+    buf.seek(0)
+    container.put_archive("/home/agent", buf)
+
+
 def run_agent_container(
     config: ForgeConfig,
     repo_url: str,
@@ -262,7 +309,9 @@ def run_agent_container(
     # Rewrite URLs for container network: localhost → Docker service names.
     clone_url = _rewrite_url(repo_url, "forge-forgejo")
 
-    # Token is injected via .git-credentials file, not env vars.
+    # Tokens (Forgejo + GitHub) are injected via files, not env vars, so they
+    # are not visible to `docker inspect`. See _inject_git_credentials and
+    # _inject_shim_credentials.
     environment = {
         "REPO_URL": clone_url,
         "REPO_BRANCH": branch,
@@ -294,6 +343,7 @@ def run_agent_container(
 
     try:
         _inject_git_credentials(container, config)
+        _inject_shim_credentials(container, config)
         if claude_passthrough:
             _copy_claude_config(container, config)
         container.start()
