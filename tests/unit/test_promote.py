@@ -16,6 +16,7 @@ PR = {
     "body": "Body.",
     "head": {"ref": "agent/feature"},
     "base": {"ref": "main"},
+    "html_url": "http://localhost:3000/cc_forge_admin/cc_forge/pulls/7",
 }
 
 
@@ -134,6 +135,31 @@ def test_promote_errors_when_gh_missing(monkeypatch):
     _wire(monkeypatch, gh_missing=True)
     with pytest.raises(click.ClickException, match="gh CLI not found"):
         promote_mod.promote_pull_request(_config(), 7, repo_path="/repo")
+
+
+def test_pr_metadata_happy(monkeypatch):
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: _fake_forgejo(PR))
+    meta = promote_mod.pr_metadata(_config(), 7, "cc_forge")
+    assert meta == {
+        "head": "agent/feature", "base": "main", "title": "Add feature", "body": "Body.",
+        "url": "http://localhost:3000/cc_forge_admin/cc_forge/pulls/7",
+    }
+
+
+@pytest.mark.parametrize("err", ["ConnectError", "ReadError", "ProtocolError"])
+def test_pr_metadata_unreachable(monkeypatch, err):
+    import httpx
+
+    def boom(c):
+        m = MagicMock()
+        m.__enter__.return_value = m
+        m.__exit__.return_value = False
+        m.get_current_user.side_effect = getattr(httpx, err)("boom")
+        return m
+
+    monkeypatch.setattr(promote_mod, "ForgejoClient", boom)
+    with pytest.raises(click.ClickException, match="unreachable"):
+        promote_mod.pr_metadata(_config(), 7, "cc_forge")
 
 
 @pytest.mark.parametrize("url,expected", [

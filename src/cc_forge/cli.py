@@ -53,6 +53,28 @@ def promote(pr: int, repo: str, remote: str) -> None:
     click.echo(url)
 
 
+@main.command(name="pr-show")
+@click.argument("pr", type=int)
+@click.option("--repo-name", default=None,
+              help="Forgejo repo name (default: derive from the current repo's origin).")
+@click.option("--repo", default=".", help="Path to git repository (for deriving --repo-name).")
+def pr_show(pr: int, repo_name: str | None, repo: str) -> None:
+    """Print a Forgejo PR's metadata as JSON (head, base, title, body)."""
+    import json
+
+    from cc_forge.config import load_config
+    from cc_forge.git import get_repo_name, get_repo_root, is_git_repo
+    from cc_forge.promote import pr_metadata
+
+    if not repo_name:
+        if not is_git_repo(repo):
+            raise click.ClickException("Run inside a git repo or pass --repo-name.")
+        repo_name = get_repo_name(get_repo_root(repo))
+
+    cfg = load_config()
+    click.echo(json.dumps(pr_metadata(cfg, pr, repo_name)))
+
+
 @main.command()
 def status() -> None:
     """Show running forge sessions."""
