@@ -34,6 +34,18 @@ def test_resolve_github_repo_rejects_bare_repo():
         cfg.resolve_github_repo("myrepo")
 
 
+def test_resolve_github_repo_rejects_too_many_segments():
+    cfg = ForgeConfig(github_repo="owner/repo/extra")
+    with pytest.raises(ValueError, match="owner/repo"):
+        cfg.resolve_github_repo("myrepo")
+
+
+def test_resolve_github_repo_rejects_empty_segment():
+    cfg = ForgeConfig(github_repo="/repo")
+    with pytest.raises(ValueError, match="owner/repo"):
+        cfg.resolve_github_repo("myrepo")
+
+
 def test_resolve_github_repo_unset_errors():
     cfg = ForgeConfig(github_repo="", github_owner="")
     with pytest.raises(ValueError, match="FORGE_GITHUB_REPO or FORGE_GITHUB_OWNER"):

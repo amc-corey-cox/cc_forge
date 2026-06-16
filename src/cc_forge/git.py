@@ -64,8 +64,9 @@ def add_remote(path: str | Path, name: str, url: str) -> None:
     _run(["remote", "add", name, url], cwd=path)
 
 
-def push_to_remote(path: str | Path, remote: str, branch: str) -> None:
-    _run(["push", "-u", remote, branch], cwd=path)
+def push_to_remote(path: str | Path, remote: str, branch: str, set_upstream: bool = True) -> None:
+    args = ["push", "-u", remote, branch] if set_upstream else ["push", remote, branch]
+    _run(args, cwd=path)
 
 
 def set_remote_url(path: str | Path, name: str, url: str) -> None:

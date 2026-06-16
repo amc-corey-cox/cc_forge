@@ -13,10 +13,12 @@ from cc_forge.forgejo import ForgejoClient
 from cc_forge.git import (
     create_branch_from_ref,
     fetch_remote,
+    get_current_branch,
     get_remote_url,
     get_repo_name,
     get_repo_root,
     has_remote,
+    is_git_repo,
     push_to_remote,
 )
 
@@ -31,6 +33,9 @@ def promote_pull_request(
 
     Returns the URL of the created GitHub PR.
     """
+    if not is_git_repo(repo_path):
+        raise click.ClickException(f"{repo_path} is not a git repository.")
+
     repo_root = get_repo_root(repo_path)
     repo_name = get_repo_name(repo_root)
     github_repo = config.resolve_github_repo(repo_name)
@@ -50,20 +55,40 @@ def promote_pull_request(
             "(the workstation wrapper adds it)."
         )
     fetch_remote(repo_root, "forgejo")
+    if get_current_branch(repo_root) == head:
+        raise click.ClickException(
+            f"Branch '{head}' is currently checked out; switch to another branch "
+            "before promoting."
+        )
     create_branch_from_ref(repo_root, head, f"forgejo/{head}")
 
     if not has_remote(repo_root, remote):
         raise click.ClickException(f"No '{remote}' remote to push to.")
     _warn_on_repo_mismatch(repo_root, remote, github_repo)
-    push_to_remote(repo_root, remote, head)
+    push_to_remote(repo_root, remote, head, set_upstream=False)
 
     return _gh_pr_create(config, repo_root, github_repo, head, base, title, body)
+
+
+def _remote_owner_repo(url: str) -> str | None:
+    """Extract 'owner/repo' from an https or ssh git remote URL."""
+    url = url.rstrip("/")
+    if url.endswith(".git"):
+        url = url[:-4]
+    # https://host/owner/repo and ssh://git@host/owner/repo carry "://";
+    # the scp form git@host:owner/repo does not.
+    tail = url.split("://", 1)[1] if "://" in url else url.split(":", 1)[-1]
+    segments = tail.split("/")
+    if len(segments) >= 2 and segments[-1] and segments[-2]:
+        return f"{segments[-2]}/{segments[-1]}"
+    return None
 
 
 def _warn_on_repo_mismatch(repo_root: Path, remote: str, github_repo: str) -> None:
     """Warn loudly if the push remote's URL doesn't match the resolved GitHub repo."""
     url = get_remote_url(repo_root, remote)
-    if github_repo not in url:
+    actual = _remote_owner_repo(url)
+    if actual is None or actual.lower() != github_repo.lower():
         click.echo(
             f"Warning: remote '{remote}' ({url}) does not match the resolved "
             f"GitHub repo '{github_repo}'. Pushing there anyway.",
@@ -86,13 +111,11 @@ def _gh_pr_create(
     if config.github_token and not _has_ambient_gh_auth(env):
         env["GH_TOKEN"] = config.github_token
 
-    result = subprocess.run(
-        ["gh", "pr", "create", "-R", github_repo,
+    result = _run_gh(
+        ["pr", "create", "-R", github_repo,
          "--head", head, "--base", base,
          "--title", title, "--body", body],
         cwd=repo_root,
-        capture_output=True,
-        text=True,
         env=env,
     )
     if result.returncode != 0:
@@ -100,8 +123,18 @@ def _gh_pr_create(
     return result.stdout.strip()
 
 
+def _run_gh(args: list[str], **kwargs) -> subprocess.CompletedProcess:
+    """Run a gh command, surfacing a clean error if gh isn't installed."""
+    try:
+        return subprocess.run(
+            ["gh", *args], capture_output=True, text=True, **kwargs
+        )
+    except FileNotFoundError:
+        raise click.ClickException(
+            "gh CLI not found. Install GitHub CLI (https://cli.github.com) "
+            "and authenticate with 'gh auth login'."
+        )
+
+
 def _has_ambient_gh_auth(env: dict[str, str]) -> bool:
-    result = subprocess.run(
-        ["gh", "auth", "status"], capture_output=True, text=True, env=env
-    )
-    return result.returncode == 0
+    return _run_gh(["auth", "status"], env=env).returncode == 0

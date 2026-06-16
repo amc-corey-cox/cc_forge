@@ -116,7 +116,8 @@ class ForgeConfig:
         FORGE_GITHUB_REPO (explicit owner/repo) > FORGE_GITHUB_OWNER + repo_name > error.
         """
         if self.github_repo:
-            if "/" not in self.github_repo:
+            parts = self.github_repo.split("/")
+            if len(parts) != 2 or not all(parts):
                 raise ValueError(
                     f"FORGE_GITHUB_REPO must be 'owner/repo', got {self.github_repo!r}"
                 )
