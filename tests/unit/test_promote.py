@@ -136,6 +136,29 @@ def test_promote_errors_when_gh_missing(monkeypatch):
         promote_mod.promote_pull_request(_config(), 7, repo_path="/repo")
 
 
+def test_pr_metadata_happy(monkeypatch):
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: _fake_forgejo(PR))
+    meta = promote_mod.pr_metadata(_config(), 7, "cc_forge")
+    assert meta == {
+        "head": "agent/feature", "base": "main", "title": "Add feature", "body": "Body.",
+    }
+
+
+def test_pr_metadata_unreachable(monkeypatch):
+    import httpx
+
+    def boom(c):
+        m = MagicMock()
+        m.__enter__.return_value = m
+        m.__exit__.return_value = False
+        m.get_current_user.side_effect = httpx.ConnectError("refused")
+        return m
+
+    monkeypatch.setattr(promote_mod, "ForgejoClient", boom)
+    with pytest.raises(click.ClickException, match="unreachable"):
+        promote_mod.pr_metadata(_config(), 7, "cc_forge")
+
+
 @pytest.mark.parametrize("url,expected", [
     ("https://github.com/me/cc_forge.git", "me/cc_forge"),
     ("https://github.com/me/cc_forge", "me/cc_forge"),

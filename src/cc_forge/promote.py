@@ -7,9 +7,10 @@ import subprocess
 from pathlib import Path
 
 import click
+import httpx
 
 from cc_forge.config import ForgeConfig
-from cc_forge.forgejo import ForgejoClient
+from cc_forge.forgejo import ForgejoClient, ForgejoError
 from cc_forge.git import (
     create_branch_from_ref,
     fetch_remote,
@@ -40,14 +41,8 @@ def promote_pull_request(
     repo_name = get_repo_name(repo_root)
     github_repo = config.resolve_github_repo(repo_name)
 
-    with ForgejoClient(config) as forgejo:
-        owner = forgejo.get_current_user()
-        pr = forgejo.get_pull_request(owner, repo_name, pr_number)
-
-    head = pr["head"]["ref"]
-    base = pr["base"]["ref"]
-    title = pr["title"]
-    body = pr.get("body") or ""
+    meta = pr_metadata(config, pr_number, repo_name)
+    head, base, title, body = meta["head"], meta["base"], meta["title"], meta["body"]
 
     if not has_remote(repo_root, "forgejo"):
         raise click.ClickException(
@@ -68,6 +63,27 @@ def promote_pull_request(
     push_to_remote(repo_root, remote, head, set_upstream=False)
 
     return _gh_pr_create(config, repo_root, github_repo, head, base, title, body)
+
+
+def pr_metadata(config: ForgeConfig, pr_number: int, repo_name: str) -> dict:
+    """Read a Forgejo PR's metadata: {head, base, title, body}.
+
+    Raises a ClickException on an unreachable Forgejo or an API error.
+    """
+    try:
+        with ForgejoClient(config) as forgejo:
+            owner = forgejo.get_current_user()
+            pr = forgejo.get_pull_request(owner, repo_name, pr_number)
+    except (httpx.ConnectError, httpx.TimeoutException) as e:
+        raise click.ClickException(f"Forgejo unreachable at {config.forgejo_url}: {e}")
+    except ForgejoError as e:
+        raise click.ClickException(f"Forgejo: {e}")
+    return {
+        "head": pr["head"]["ref"],
+        "base": pr["base"]["ref"],
+        "title": pr["title"],
+        "body": pr.get("body") or "",
+    }
 
 
 def _remote_owner_repo(url: str) -> str | None:

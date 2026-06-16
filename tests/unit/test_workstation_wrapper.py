@@ -21,6 +21,7 @@ _SSH_SHIM = """#!/bin/bash
 echo "ssh $*" >> "$CALL_LOG"
 case "$*" in
     *"forge run"*) exit "${SSH_RUN_RC:-0}";;
+    *"forge pr-show"*) printf '%s' "${PR_META_JSON:-}"; exit "${SSH_PRSHOW_RC:-0}";;
     *) exit "${SSH_RC:-0}";;
 esac
 """
@@ -34,6 +35,7 @@ _GIT_SHIM = """#!/bin/bash
 echo "git $*" >> "$CALL_LOG"
 case "$1 $2" in
     "rev-parse --show-toplevel") echo "${FAKE_REPO_PATH:-/home/u/myrepo}"; exit 0;;
+    "rev-parse --abbrev-ref") echo "${FAKE_CURRENT_BRANCH:-main}"; exit 0;;
     "remote get-url")
         if [ -n "$GIT_HAS_REMOTE" ]; then echo "$GIT_REMOTE_URL"; exit 0; fi
         exit 2;;
@@ -43,13 +45,21 @@ case "$1 $2" in
 esac
 """
 
+_GH_SHIM = """#!/bin/bash
+echo "gh $*" >> "$CALL_LOG"
+echo "https://github.com/me/myrepo/pull/9"
+exit "${GH_RC:-0}"
+"""
+
 
 @pytest.fixture()
 def shim_bin(tmp_path: Path) -> Path:
-    """Create a bin/ dir of ssh/rsync/git shims and return it."""
+    """Create a bin/ dir of ssh/rsync/git/gh shims and return it."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name, body in (("ssh", _SSH_SHIM), ("rsync", _RSYNC_SHIM), ("git", _GIT_SHIM)):
+    for name, body in (
+        ("ssh", _SSH_SHIM), ("rsync", _RSYNC_SHIM), ("git", _GIT_SHIM), ("gh", _GH_SHIM)
+    ):
         shim = bin_dir / name
         shim.write_text(body)
         shim.chmod(0o755)
@@ -152,3 +162,53 @@ def test_passthrough_subcommand_skips_rsync(shim_bin, tmp_path):
     assert proc.returncode == 0
     assert "rsync" not in log
     assert "forge status" in log
+
+
+_META = '{"head":"agent/feature","base":"main","title":"Add it","body":"Body."}'
+
+
+def test_promote_reads_metadata_then_writes_github(shim_bin, tmp_path):
+    proc, log = run_wrapper(
+        shim_bin, tmp_path, ["promote", "4"],
+        PR_META_JSON=_META,
+        GIT_HAS_REMOTE="1",
+        GIT_REMOTE_URL="http://tesseract:3000/cc_forge_admin/myrepo.git",
+    )
+    assert proc.returncode == 0, proc.stderr
+    # metadata read happens on the server, not locally
+    assert "forge pr-show 4 --repo-name myrepo" in log
+    # branch materialized + pushed to origin (GitHub) locally
+    assert "git branch -f agent/feature forgejo/agent/feature" in log
+    assert "git push origin agent/feature" in log
+    # GitHub PR opened with the carried metadata, no -R (inferred from origin)
+    assert "gh pr create --head agent/feature --base main --title Add it --body Body." in log
+    assert "-R" not in log
+    # the gh PR URL is surfaced on stdout
+    assert "https://github.com/me/myrepo/pull/9" in proc.stdout
+
+
+def test_promote_blocks_when_head_checked_out(shim_bin, tmp_path):
+    proc, log = run_wrapper(
+        shim_bin, tmp_path, ["promote", "4"],
+        PR_META_JSON=_META,
+        FAKE_CURRENT_BRANCH="agent/feature",
+    )
+    assert proc.returncode == 1
+    assert "checked out" in proc.stderr
+    assert "gh pr create" not in log  # never reached the GitHub write
+
+
+def test_promote_requires_pr_number(shim_bin, tmp_path):
+    proc, log = run_wrapper(shim_bin, tmp_path, ["promote"])
+    assert proc.returncode == 1
+    assert "usage" in proc.stderr
+    assert "ssh" not in log
+
+
+def test_promote_fails_when_pr_show_fails(shim_bin, tmp_path):
+    proc, log = run_wrapper(
+        shim_bin, tmp_path, ["promote", "4"], PR_META_JSON=_META, SSH_PRSHOW_RC="1",
+    )
+    assert proc.returncode == 1
+    assert "could not read PR 4" in proc.stderr
+    assert "gh pr create" not in log

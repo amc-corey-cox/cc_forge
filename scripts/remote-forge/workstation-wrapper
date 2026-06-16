@@ -68,6 +68,47 @@ if [ "$SUBCMD" = "run" ]; then
     else
         echo "forge: could not fetch from Forgejo (is $FORGE_SERVER:$FORGE_FORGEJO_PORT reachable?)" >&2
     fi
+elif [ "$SUBCMD" = "promote" ]; then
+    # Split across the host boundary: the server reads its local Forgejo (it has the
+    # token); the workstation does the GitHub write with its own ambient gh auth.
+    FORGE_SERVER="${FORGE_SERVER:-tesseract}"
+    FORGE_FORGEJO_USER="${FORGE_FORGEJO_USER:-cc_forge_admin}"
+    FORGE_FORGEJO_PORT="${FORGE_FORGEJO_PORT:-3000}"
+
+    PR_NUM="$1"
+    [ -n "$PR_NUM" ] || { echo "forge: usage: forge promote <pr-number>" >&2; exit 1; }
+
+    REPO_PATH=$(git rev-parse --show-toplevel 2>/dev/null) || {
+        echo "forge: not a git repository" >&2; exit 1; }
+    REPO=$(basename "$REPO_PATH")
+
+    # 1. Read PR metadata from the server (reads its local Forgejo).
+    META=$(ssh "$FORGE_SERVER" "forge pr-show $(printf %q "$PR_NUM") --repo-name $(printf %q "$REPO")") || {
+        echo "forge: could not read PR $PR_NUM from $FORGE_SERVER" >&2; exit 1; }
+    HEAD=$(printf '%s' "$META" | python3 -c "import sys,json;print(json.load(sys.stdin)['head'])")
+    BASE=$(printf '%s' "$META" | python3 -c "import sys,json;print(json.load(sys.stdin)['base'])")
+    TITLE=$(printf '%s' "$META" | python3 -c "import sys,json;print(json.load(sys.stdin)['title'])")
+    BODY=$(printf '%s' "$META" | python3 -c "import sys,json;print(json.load(sys.stdin)['body'])")
+
+    # 2. Can't reset a checked-out branch.
+    if [ "$(git rev-parse --abbrev-ref HEAD)" = "$HEAD" ]; then
+        echo "forge: branch '$HEAD' is checked out; switch away before promoting" >&2; exit 1
+    fi
+
+    # 3. Ensure the forgejo remote, fetch the agent's branch (read-only).
+    FORGEJO_URL="http://${FORGE_SERVER}:${FORGE_FORGEJO_PORT}/${FORGE_FORGEJO_USER}/${REPO}.git"
+    if ! CURRENT_URL=$(git remote get-url forgejo 2>/dev/null); then
+        git remote add forgejo "$FORGEJO_URL"
+    elif [ "$CURRENT_URL" != "$FORGEJO_URL" ]; then
+        git remote set-url forgejo "$FORGEJO_URL"
+    fi
+    git fetch forgejo >&2
+
+    # 4. Materialize the branch and open the GitHub PR with the workstation's gh
+    #    (no -R: gh infers the repo from origin, so no FORGE_GITHUB_* config is needed here).
+    git branch -f "$HEAD" "forgejo/$HEAD"
+    git push origin "$HEAD" >&2
+    gh pr create --head "$HEAD" --base "$BASE" --title "$TITLE" --body "$BODY"
 else
     FORGE_SERVER="${FORGE_SERVER:-tesseract}"
     exec ssh -t "$FORGE_SERVER" "forge $(printf %q "$SUBCMD") $(printf '%q ' "$@")"
