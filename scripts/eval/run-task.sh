@@ -43,6 +43,10 @@ TASK_NAME=$(basename "$TASK_DIR")
 TASK_DIR_ABS=$(cd "$TASK_DIR" && pwd)
 
 OUT="$OUTPUT_BASE/$MODEL/$TASK_NAME"
+# Clear any stale artifacts from a previous run into the same OUTPUT_BASE so
+# /workspace is genuinely fresh and conditional outputs (setup.log, score.log,
+# score-exit) from a prior run don't leak into this run's meta.json.
+rm -rf "$OUT"
 mkdir -p "$OUT/workspace"
 cp "$PROMPT_FILE" "$OUT/prompt.txt"
 OUT_ABS=$(cd "$OUT" && pwd)
@@ -61,10 +65,12 @@ INNER=$(cat <<EOF
 set -uo pipefail
 cd /workspace
 if [ -f /task/setup.sh ]; then
-    bash /task/setup.sh > /meta/setup.log 2>&1 || {
-        echo "setup.sh failed (exit \$?)" >&2
+    bash /task/setup.sh > /meta/setup.log 2>&1
+    SETUP_EXIT=\$?
+    if [ "\$SETUP_EXIT" -ne 0 ]; then
+        echo "setup.sh failed (exit \$SETUP_EXIT)" >> /meta/setup.log
         exit 90
-    }
+    fi
 fi
 $CLAUDE_CMD > /meta/output.json 2> /meta/stderr.log
 CLAUDE_EXIT=\$?
