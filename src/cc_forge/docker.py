@@ -152,6 +152,35 @@ def _add_tar_dir(tar, name: str) -> None:
     tar.addfile(info)
 
 
+def _inject_agent_instructions(container, config: ForgeConfig) -> None:
+    """Inject forge's agent instructions into the container, for any harness.
+
+    Canonical source is docker/AGENTS.md (CLAUDE.md symlinks to it). The instructions
+    describe the forge environment, so they live in the agent's home — not the cloned
+    repo — and are surfaced where each supported harness reads them:
+      - ~/.claude/CLAUDE.md     (Claude)
+      - ~/AGENTS.md             (canonical; the cross-harness convention)
+      - ~/.aider.conf.yml       (aider reads AGENTS.md as a read-only context file)
+    """
+    import io
+    import tarfile
+
+    docker_dir = Path(config.compose_file).parent
+    agents_md = docker_dir / "AGENTS.md"
+    if not agents_md.is_file():
+        return
+    data = agents_md.read_bytes()
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        _add_tar_dir(tar, ".claude/")
+        _add_tar_file(tar, ".claude/CLAUDE.md", data)
+        _add_tar_file(tar, "AGENTS.md", data)
+        _add_tar_file(tar, ".aider.conf.yml", b"read:\n  - /home/agent/AGENTS.md\n")
+    buf.seek(0)
+    container.put_archive("/home/agent", buf)
+
+
 def _copy_claude_config(container, config: ForgeConfig) -> None:
     """Copy Claude config into the container.
 
@@ -186,13 +215,6 @@ def _copy_claude_config(container, config: ForgeConfig) -> None:
             # Inject credentials once (saved-preferred, host fallback)
             _add_tar_file(tar, ".claude/.credentials.json",
                           cred_path.read_bytes(), mode=0o600)
-
-        # Forge-specific agent CLAUDE.md (from docker/ directory, not host ~/.claude/)
-        docker_dir = Path(config.compose_file).parent
-        agent_claude_md = docker_dir / "CLAUDE.md"
-        if agent_claude_md.is_file():
-            _add_tar_file(tar, ".claude/CLAUDE.md",
-                          agent_claude_md.read_bytes())
 
         # $HOME/.claude.json — onboarding bypass + saved state
         # hasCompletedOnboarding lives here (NOT in settings.json)
@@ -346,6 +368,9 @@ def run_agent_container(
         _inject_shim_credentials(container, config)
         if claude_passthrough:
             _copy_claude_config(container, config)
+        # After the Claude state restore, so the canonical instructions always win
+        # (restored state can carry a stale ~/.claude/CLAUDE.md from a prior session).
+        _inject_agent_instructions(container, config)
         container.start()
     except Exception:
         try:
