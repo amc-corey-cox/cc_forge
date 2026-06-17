@@ -145,13 +145,15 @@ sudo systemctl enable --now ollama-cpu.service
 
 The `.bak` rename preserves the original file content for reference — systemd only loads files ending in `.service`.
 
+> **Note for the "Files and Locations" table below:** that table documents the *initial* layout (before any cleanup). Once you've run this procedure, `/etc/systemd/system/ollama.service` is at `…/ollama.service.bak` instead. Subsequent post-upgrade runs add timestamps to avoid overwriting prior backups.
+
 ### Post-upgrade ritual
 
 Run after every Ollama installer upgrade:
 
 ```bash
 sudo systemctl disable --now ollama.service && \
-sudo mv /etc/systemd/system/ollama.service /etc/systemd/system/ollama.service.bak.$(date +%F) && \
+sudo mv /etc/systemd/system/ollama.service /etc/systemd/system/ollama.service.bak.$(date +%Y%m%d-%H%M%S) && \
 sudo systemctl daemon-reload && \
 sudo systemctl restart ollama-cpu.service
 ```
@@ -162,7 +164,7 @@ Skip the installer; replace only the binary so the service file is never touched
 
 ```bash
 sudo systemctl stop ollama-cpu.service
-sudo curl -L https://ollama.ai/download/ollama-linux-amd64 -o /usr/local/bin/ollama
+sudo curl -fL https://ollama.ai/download/ollama-linux-amd64 -o /usr/local/bin/ollama
 sudo chmod +x /usr/local/bin/ollama
 sudo systemctl start ollama-cpu.service
 ```
