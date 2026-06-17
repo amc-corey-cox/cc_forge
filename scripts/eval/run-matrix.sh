@@ -35,30 +35,42 @@ echo "  tasks_dir: $TASKS_DIR"
 echo "  ollama_url: $OLLAMA_URL"
 echo "  output: $OUTPUT_BASE"
 
-# Build a small "task" with a trivial prompt purely to populate the model's
-# KV cache for Claude Code's system prompt. Reuses the same docker run path so
-# whatever Claude Code prefix gets cached is the same prefix the real tasks
-# will benefit from.
+# Build a small "task" with an explicit terminating prompt purely to populate
+# the model's KV cache for Claude Code's system prompt. The prompt has to be
+# unambiguous about producing tiny output — vague prompts like just "OK" have
+# been observed sending models into multi-turn tool-use loops that don't
+# terminate. A 30-minute wall-clock cap (timeout 1800) catches any model that
+# still wanders, so a runaway warmup costs ≤30 min instead of hours.
+WARMUP_PROMPT="Reply with the single word OK and nothing else."
+WARMUP_TIMEOUT_S=1800
+
 warmup() {
     local model="$1"
-    local warmup_out="$OUTPUT_BASE/_warmup/$model"
+    local warmup_path
+    warmup_path=$(echo "$model" | tr ':/' '__')
+    local warmup_out="$OUTPUT_BASE/_warmup/$warmup_path"
     mkdir -p "$warmup_out"
-    echo "  warming $model (first call to a model is ~25-30 min on CPU)..."
+    echo "  warming $model (cap: ${WARMUP_TIMEOUT_S}s)..."
     local start end
     start=$(date +%s)
     local cmd
     cmd=$(printf 'claude -p %q --no-session-persistence --output-format json --model %q --dangerously-skip-permissions' \
-        "OK" "$model")
-    docker run --rm \
+        "$WARMUP_PROMPT" "$model")
+    timeout "$WARMUP_TIMEOUT_S" docker run --rm \
         --network forge-network \
         -e ANTHROPIC_BASE_URL="$OLLAMA_URL" \
         -e ANTHROPIC_AUTH_TOKEN=ollama \
         --entrypoint /bin/bash \
         "$AGENT_IMAGE" \
         -c "$cmd" \
-        > "$warmup_out/output.json" 2> "$warmup_out/stderr.log" || true
+        > "$warmup_out/output.json" 2> "$warmup_out/stderr.log" \
+        && WU_EXIT=0 || WU_EXIT=$?
     end=$(date +%s)
-    echo "  warmup duration: $((end - start))s"
+    if [ "$WU_EXIT" -eq 124 ]; then
+        echo "  warmup TIMEOUT after $((end - start))s — proceeding to tasks anyway"
+    else
+        echo "  warmup duration: $((end - start))s (exit $WU_EXIT)"
+    fi
 }
 
 export OUTPUT_BASE OLLAMA_URL AGENT_IMAGE
