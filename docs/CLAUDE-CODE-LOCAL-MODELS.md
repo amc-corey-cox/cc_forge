@@ -66,11 +66,11 @@ Following on the community research in #53, the second screening run broadens be
 | Model | Ollama name | Approx size | Why | Origin |
 |-------|-------------|-------------|-----|--------|
 | `qwen3-coder-32k` | `qwen3-coder-32k` | 17 GB | Carry-over baseline; 5/5 in matrix 1 | Alibaba / Qwen |
-| Devstral Small 2 | `devstral:24b` | ~14 GB | Mistral, Dec 2025, explicitly agentic-tuned, 256K context, Apache 2.0 | Mistral AI (France) |
-| OLMo-2 32B | `olmo2:32b` | ~19 GB | Generalist comparison from a fully-open research team; tests whether code-specialization matters for our task set | Allen AI / AI2 (US) |
-| IBM Granite 4.1-8B | `granite4:8b` or `granite-code:8b` | ~5 GB | Apache 2.0, fast small comparison, IBM Research's open-source release pattern | IBM Research (US) |
-| Gemma 4 12B | `gemma4:12b` | ~7-8 GB | Google, June 2026 release, native tool calling expected | Google DeepMind (US) |
-| Phi-4 | `phi4:14b` | ~9 GB | Microsoft, strong reasoning per byte | Microsoft Research (US) |
+| Devstral Small 2 | `devstral:24b` | 14 GB | Mistral, Dec 2025, explicitly agentic-tuned, 256K context, Apache 2.0 | Mistral AI (France) |
+| OLMo 3.1 32B | `olmo-3.1:32b` | ~19 GB | Generalist comparison from a fully-open research team; declares `tools` capability | Allen AI / AI2 (US) |
+| IBM Granite 4.1-8B | `granite4.1:8b` | ~5 GB | Apache 2.0, fast small comparison, IBM Research's open-source release pattern | IBM Research (US) |
+| Gemma 3 12B | `gemma3:12b` | ~7-8 GB | Google. Gemma 4's 12B variant needs Ollama newer than 0.15.4 on tesseract; using 3 as the practical near-equivalent. | Google DeepMind (US) |
+| Phi-4 | `phi4:14b` | 9 GB | Microsoft, strong reasoning per byte | Microsoft Research (US) |
 
 ### Pre-flight: confirm tool-calling support before committing run time
 

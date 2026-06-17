@@ -19,11 +19,11 @@ set -euo pipefail
 # carry-over baseline from matrix 1 (we already trust it works in this harness).
 MODELS=(
     "qwen3-coder-32k"   # carry-over baseline
-    "devstral:24b"       # Mistral, agentic-coding-specialized
-    "olmo2:32b"          # Allen AI, generalist + fully open
-    "granite4:8b"        # IBM Research, Apache 2.0
-    "gemma4:12b"         # Google, June 2026
-    "phi4:14b"           # Microsoft, strong-per-byte
+    "devstral:24b"      # Mistral, agentic-coding-specialized
+    "olmo-3.1:32b"      # Allen AI, generalist + fully open, declared tools support
+    "granite4.1:8b"     # IBM Research, Apache 2.0
+    "gemma3:12b"        # Google. Gemma 4 (12b) requires newer Ollama than 0.15.4; fell back to 3.
+    "phi4:14b"          # Microsoft, strong-per-byte
 )
 
 # Tool-support pre-flight. Claude Code's harness requires tool calling — a
