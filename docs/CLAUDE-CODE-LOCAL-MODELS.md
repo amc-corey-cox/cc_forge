@@ -50,6 +50,46 @@ Eval harness invocation: `MODELS="qwen3-coder-32k gpt-oss:20b gpt-oss-64k" ./scr
 
 `qwen3-coder-32k` stays as the default `FORGE_CLAUDE_MODEL` in `src/cc_forge/config.py`. The other two are not viable replacements for this combination of (Claude Code harness, CPU-only host, our task set). The next eval pass (probably issue #54, cloud Ollama services) is where we'd test whether the same models become viable with more compute behind them, or whether something like `qwen3-coder-32k` running on a faster backend gives a meaningful speed-up.
 
+## Screening matrix 2 — candidates (planned)
+
+Following on the community research in #53, the second screening run broadens beyond the initial Qwen/GPT-OSS family to test whether other open-weight families produce different capability profiles in our harness. The shortlist deliberately spans:
+
+- **An agentic-coding-specialized model** (Devstral Small 2)
+- **A fully-open research-style model** (OLMo-2 — releases weights + data + training code in the AI2 mold)
+- **An enterprise-open Apache-2.0 model** (IBM Granite 4.1)
+- **A recent Google release** (Gemma 4 — captures the "what's hot from a major lab this month" angle)
+- **A small-but-strong reasoning model** (Phi-4)
+- **`qwen3-coder-32k` retained as the carryover baseline** — matrix 1's only 5/5 capability pass
+
+### Shortlist
+
+| Model | Ollama name | Approx size | Why | Origin |
+|-------|-------------|-------------|-----|--------|
+| `qwen3-coder-32k` | `qwen3-coder-32k` | 17 GB | Carry-over baseline; 5/5 in matrix 1 | Alibaba / Qwen |
+| Devstral Small 2 | `devstral:24b` | ~14 GB | Mistral, Dec 2025, explicitly agentic-tuned, 256K context, Apache 2.0 | Mistral AI (France) |
+| OLMo-2 32B | `olmo2:32b` | ~19 GB | Generalist comparison from a fully-open research team; tests whether code-specialization matters for our task set | Allen AI / AI2 (US) |
+| IBM Granite 4.1-8B | `granite4:8b` or `granite-code:8b` | ~5 GB | Apache 2.0, fast small comparison, IBM Research's open-source release pattern | IBM Research (US) |
+| Gemma 4 12B | `gemma4:12b` | ~7-8 GB | Google, June 2026 release, native tool calling expected | Google DeepMind (US) |
+| Phi-4 | `phi4:14b` | ~9 GB | Microsoft, strong reasoning per byte | Microsoft Research (US) |
+
+### Pre-flight: confirm tool-calling support before committing run time
+
+Matrix 1 surfaced two models pulled to tesseract that Ollama returns `"does not support tools"` for (`qwen:72b`, `vanilj/midnight-miqu-70b-v1.5`). The fix is cheap: before adding any model to a matrix, run
+
+```bash
+ollama show <model> | grep -i tools
+```
+
+on the forge host. If the `Capabilities` section doesn't include `tools`, the model can't drive Claude Code and shouldn't be added — Claude Code's harness depends on tool calling. The matrix-runner script for this run does this check automatically and refuses to include models that fail it.
+
+### Expected cost on tesseract
+
+With most candidates 5-19 GB instead of matrix 1's 17 GB qwen3 (and the smaller ones much faster on CPU per token), the per-task wall-clock should drop noticeably for everything except qwen3 and OLMo-2-32B. Rough estimate: **8-12 hours total for the full 6×6 run**, especially if the smaller models can run in parallel without RAM contention. Capture per-task duration in `meta.json` as usual.
+
+### Results
+
+_To be populated after the run._
+
 ## Pre-flight requirements (run on the forge host)
 
 Before running an eval pass:
