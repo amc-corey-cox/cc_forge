@@ -67,7 +67,7 @@ forge stop --all
 
 What happens when you type `forge`:
 
-1. Forgejo and Ollama proxies start automatically if they aren't running.
+1. The forge infrastructure (Forgejo + Ollama proxies) starts if Forgejo isn't already up.
 2. Your repo is pushed to the local Forgejo instance.
 3. An isolated container clones from Forgejo and drops you into an interactive
    Claude Code session.
@@ -89,12 +89,13 @@ forge promote <forgejo-pr-number>
 `forge promote` fetches the agent's branch from Forgejo, pushes it to your
 GitHub remote, and opens a GitHub PR with the same title and description.
 
-**Why promote runs on the workstation:** The agent container can talk to Forgejo
+**Why promote runs on your machine:** The agent container can talk to Forgejo
 but not to GitHub. Promotion is the deliberate step where reviewed work crosses
-that boundary — your `gh` credentials stay on your machine, never inside the
-container. You'll need `gh` authenticated and `FORGE_GITHUB_REPO` (or
-`FORGE_GITHUB_OWNER`) in your config — see
-[docs/FORGE-USAGE.md](docs/FORGE-USAGE.md) for details.
+that boundary — your `gh` credentials stay with you, never inside the container.
+You'll need `gh` authenticated. On a single machine, also set `FORGE_GITHUB_REPO`
+(or `FORGE_GITHUB_OWNER`) in your config; if forge runs on a separate server, you
+promote from your workstation and it infers the repo from `origin`. See
+[docs/FORGE-USAGE.md](docs/FORGE-USAGE.md) for both setups.
 
 ### The Full Loop
 
