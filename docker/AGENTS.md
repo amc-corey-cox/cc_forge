@@ -47,3 +47,4 @@ Write it for the human who will read it.
 - Match the existing style of the code you're editing.
 - Keep commit messages to one concise line.
 - Never commit secrets or credentials.
+- Don't add AI or "Generated with …" attribution to PRs or commit messages.
