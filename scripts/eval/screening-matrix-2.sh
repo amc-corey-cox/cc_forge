@@ -61,10 +61,16 @@ preflight_models() {
 }
 
 # Verify everything is pulled before starting — fail fast if not.
+# `ollama list` shows ":latest" explicitly when no tag was given at pull time,
+# so a model entered here as "name" needs to match "name:latest" too.
 verify_pulled() {
     local missing=()
+    local pulled
+    pulled=$(ollama list 2>/dev/null | awk 'NR>1 {print $1}')
     for m in "${MODELS[@]}"; do
-        if ! ollama list 2>/dev/null | awk '{print $1}' | grep -qFx "$m"; then
+        local target="$m"
+        [[ "$m" == *:* ]] || target="${m}:latest"
+        if ! grep -qFx "$target" <<< "$pulled"; then
             missing+=("$m")
         fi
     done
