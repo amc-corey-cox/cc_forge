@@ -42,7 +42,14 @@ PROMPT_FILE="$TASK_DIR/prompt.txt"
 TASK_NAME=$(basename "$TASK_DIR")
 TASK_DIR_ABS=$(cd "$TASK_DIR" && pwd)
 
-OUT="$OUTPUT_BASE/$MODEL/$TASK_NAME"
+# Sanitize model name for filesystem use. Ollama names like "qwen:72b" contain
+# colons that break docker bind-mount path parsing if used directly. Distinct
+# replacements for ':' and '/' so model names that differ only in those
+# separators don't collide into the same output directory. Original name still
+# goes to `claude -p --model` and into meta.json.
+MODEL_PATH=$(echo "$MODEL" | tr ':/' '_-')
+
+OUT="$OUTPUT_BASE/$MODEL_PATH/$TASK_NAME"
 # Clear any stale artifacts from a previous run into the same OUTPUT_BASE so
 # /workspace is genuinely fresh and conditional outputs (setup.log, score.log,
 # score-exit) from a prior run don't leak into this run's meta.json.

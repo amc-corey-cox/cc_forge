@@ -1,0 +1,1 @@
+In app.py, rename the variable `count` to `total_count` everywhere it appears.
