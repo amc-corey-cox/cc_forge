@@ -120,6 +120,59 @@ Service files are in `docs/` directory:
 | [`ollama-vulkan.service`](ollama-vulkan.service) | 11435 | Vulkan GPU (Intel Arc), stock Ollama 0.15+ |
 | [`ollama-ipex.service.legacy`](ollama-ipex.service.legacy) | 11434 | IPEX-LLM GPU (legacy, rename to `.service` to use) |
 
+## Stock `ollama.service` Reactivation After Upgrades
+
+**Problem.** Ollama's official installer (`curl https://ollama.ai/install.sh | sh`) always (re)creates `/etc/systemd/system/ollama.service` — a vanilla unit file that:
+
+- Binds to `localhost:11434` only (no remote access)
+- Has no GPU/CPU constraint
+- Lacks the model-retention and load-timeout tuning that `ollama-cpu.service` provides
+
+When this stock service starts, it grabs port 11434 and `ollama-cpu.service` (the one we actually want) starts failing with `bind: address already in use` and cycles in `auto-restart` forever. **Forge's agent containers reach Ollama through a docker bridge, so a localhost-only Ollama is unreachable to them** — the symptom in a forge session is a 3-minute `UND_ERR_SOCKET` timeout per request.
+
+This is **not** caused by Ubuntu/apt updates — the Ollama binary lives in `/usr/local/bin/`, outside apt's reach. Reactivation specifically comes from re-running the installer script during upgrades.
+
+### One-time cleanup
+
+Run once when the system is in the conflict state:
+
+```bash
+sudo systemctl disable --now ollama.service
+sudo mv /etc/systemd/system/ollama.service /etc/systemd/system/ollama.service.bak
+sudo systemctl daemon-reload
+sudo systemctl enable --now ollama-cpu.service
+```
+
+The `.bak` rename preserves the original file content for reference — systemd only loads files ending in `.service`.
+
+> **Note for the "Files and Locations" table below:** that table documents the *initial* layout (before any cleanup). Once you've run this procedure, `/etc/systemd/system/ollama.service` is at `…/ollama.service.bak` instead. Subsequent post-upgrade runs add timestamps to avoid overwriting prior backups.
+
+### Post-upgrade ritual
+
+Run after every Ollama installer upgrade:
+
+```bash
+sudo systemctl disable --now ollama.service && \
+sudo mv /etc/systemd/system/ollama.service /etc/systemd/system/ollama.service.bak.$(date +%Y%m%d-%H%M%S) && \
+sudo systemctl daemon-reload && \
+sudo systemctl restart ollama-cpu.service
+```
+
+### Cleaner alternative: upgrade by binary replacement
+
+Skip the installer; replace only the binary so the service file is never touched:
+
+```bash
+sudo systemctl stop ollama-cpu.service
+sudo curl -fL https://ollama.ai/download/ollama-linux-amd64 -o /usr/local/bin/ollama
+sudo chmod +x /usr/local/bin/ollama
+sudo systemctl start ollama-cpu.service
+```
+
+### Detecting the problem
+
+`ollama-cpu.service` cycling in `auto-restart` state with `bind: address already in use` in `journalctl -u ollama-cpu` means the stock `ollama.service` is back. [Issue #57](https://github.com/amc-corey-cox/cc_forge/issues/57) (`forge doctor` pre-flight check) will surface this automatically once implemented.
+
 ## Model Compatibility
 
 | Model | Size | Vulkan (11435) | CPU (11434) | Notes |
