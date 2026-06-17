@@ -7,8 +7,14 @@ set -e
 
 [ -f app.py ] || { echo "app.py missing"; exit 2; }
 
-# Syntax check
-python3 -c "import ast; ast.parse(open('app.py').read())"
+# Imports cleanly — exercises module execution, not just syntax. A top-level
+# raise or zero-division would pass ast.parse but fail this.
+python3 -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('app', 'app.py')
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+"
 
 # No bare `count` identifier (won't match `total_count` because _ is a word char)
 if grep -wq count app.py; then

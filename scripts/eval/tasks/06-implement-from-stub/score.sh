@@ -6,7 +6,8 @@ set -e
 [ -f palindrome.py ] || { echo "palindrome.py missing"; exit 2; }
 [ -f check.py ] || { echo "check.py missing"; exit 2; }
 
-if ! git -C . diff HEAD --exit-code -- check.py > /dev/null 2>&1; then
+ROOT=$(git rev-list --max-parents=0 HEAD | head -1)
+if ! git diff --exit-code "$ROOT" -- check.py > /dev/null 2>&1; then
     echo "check.py was modified — the implementation should be in palindrome.py only"
     exit 3
 fi

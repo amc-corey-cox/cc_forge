@@ -43,9 +43,11 @@ TASK_NAME=$(basename "$TASK_DIR")
 TASK_DIR_ABS=$(cd "$TASK_DIR" && pwd)
 
 # Sanitize model name for filesystem use. Ollama names like "qwen:72b" contain
-# colons that break docker bind-mount path parsing if used directly. The original
-# name still gets passed to `claude -p --model` and recorded in meta.json.
-MODEL_PATH=$(echo "$MODEL" | tr ':/' '__')
+# colons that break docker bind-mount path parsing if used directly. Distinct
+# replacements for ':' and '/' so model names that differ only in those
+# separators don't collide into the same output directory. Original name still
+# goes to `claude -p --model` and into meta.json.
+MODEL_PATH=$(echo "$MODEL" | tr ':/' '_-')
 
 OUT="$OUTPUT_BASE/$MODEL_PATH/$TASK_NAME"
 # Clear any stale artifacts from a previous run into the same OUTPUT_BASE so

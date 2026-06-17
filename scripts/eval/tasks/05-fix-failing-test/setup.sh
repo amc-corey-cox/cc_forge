@@ -7,7 +7,7 @@ git config user.name "Eval Setup"
 
 cat > calc.py <<'PY'
 def add(a, b):
-    return a - b  # bug: should be +
+    return a - b
 PY
 
 cat > check.py <<'PY'

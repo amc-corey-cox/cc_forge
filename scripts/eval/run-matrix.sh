@@ -47,7 +47,7 @@ WARMUP_TIMEOUT_S=1800
 warmup() {
     local model="$1"
     local warmup_path
-    warmup_path=$(echo "$model" | tr ':/' '__')
+    warmup_path=$(echo "$model" | tr ':/' '_-')
     local warmup_out="$OUTPUT_BASE/_warmup/$warmup_path"
     mkdir -p "$warmup_out"
     echo "  warming $model (cap: ${WARMUP_TIMEOUT_S}s)..."
