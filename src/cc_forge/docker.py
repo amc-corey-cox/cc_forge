@@ -366,9 +366,11 @@ def run_agent_container(
     try:
         _inject_git_credentials(container, config)
         _inject_shim_credentials(container, config)
-        _inject_agent_instructions(container, config)
         if claude_passthrough:
             _copy_claude_config(container, config)
+        # After the Claude state restore, so the canonical instructions always win
+        # (restored state can carry a stale ~/.claude/CLAUDE.md from a prior session).
+        _inject_agent_instructions(container, config)
         container.start()
     except Exception:
         try:

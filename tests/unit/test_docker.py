@@ -572,6 +572,24 @@ class TestRunAgentContainer:
             )
         inject.assert_called_once()
 
+    def test_instructions_injected_after_claude_state_in_passthrough(self):
+        # Canonical instructions must win over restored (possibly stale) Claude state.
+        config = _make_config()
+        client = MagicMock()
+        client.images.get.return_value = True
+        client.containers.create.return_value = MagicMock(id="x")
+        manager = MagicMock()
+        with patch("cc_forge.docker._docker_client", return_value=client), \
+                patch("cc_forge.docker._copy_claude_config", manager.copy), \
+                patch("cc_forge.docker._inject_agent_instructions", manager.inject):
+            from cc_forge.docker import run_agent_container
+            run_agent_container(
+                config, repo_url="http://localhost:3000/u/r.git",
+                branch="main", repo_name="repo", claude_passthrough=True,
+            )
+        order = [c[0] for c in manager.mock_calls]
+        assert order.index("copy") < order.index("inject")
+
 
 class TestSaveClaudeCredentials:
     """Tests for save_claude_credentials state extraction."""
