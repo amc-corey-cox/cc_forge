@@ -161,6 +161,10 @@ def _inject_agent_instructions(container, config: ForgeConfig) -> None:
       - ~/.claude/CLAUDE.md     (Claude)
       - ~/AGENTS.md             (canonical; the cross-harness convention)
       - ~/.aider.conf.yml       (aider reads AGENTS.md as a read-only context file)
+
+    Any docker/commands/*.md are also injected to ~/.claude/commands/ so command-capable
+    harnesses can run them (e.g. the /self-review and /complexity-audit steps AGENTS.md
+    requires before opening a PR).
     """
     import io
     import tarfile
@@ -177,6 +181,12 @@ def _inject_agent_instructions(container, config: ForgeConfig) -> None:
         _add_tar_file(tar, ".claude/CLAUDE.md", data)
         _add_tar_file(tar, "AGENTS.md", data)
         _add_tar_file(tar, ".aider.conf.yml", b"read:\n  - /home/agent/AGENTS.md\n")
+
+        commands_dir = docker_dir / "commands"
+        if commands_dir.is_dir():
+            _add_tar_dir(tar, ".claude/commands/")
+            for cmd in sorted(commands_dir.glob("*.md")):
+                _add_tar_file(tar, f".claude/commands/{cmd.name}", cmd.read_bytes())
     buf.seek(0)
     container.put_archive("/home/agent", buf)
 

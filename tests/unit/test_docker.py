@@ -304,6 +304,10 @@ class TestCopyClaudeConfig:
         docker_dir = tmp_path / "docker"
         docker_dir.mkdir()
         (docker_dir / "AGENTS.md").write_bytes(b"# Agent instructions")
+        commands_dir = docker_dir / "commands"
+        commands_dir.mkdir()
+        (commands_dir / "self-review.md").write_bytes(b"# self review")
+        (commands_dir / "complexity-audit.md").write_bytes(b"# complexity audit")
 
         config = _make_config(compose_file=str(docker_dir / "docker-compose.yml"))
         container = self._capture_container()
@@ -316,6 +320,9 @@ class TestCopyClaudeConfig:
         assert self._get_tar_content(container, ".claude/CLAUDE.md") == b"# Agent instructions"
         assert self._get_tar_content(container, "AGENTS.md") == b"# Agent instructions"
         assert b"/home/agent/AGENTS.md" in self._get_tar_content(container, ".aider.conf.yml")
+        # every command file lands in ~/.claude/commands/ for command-capable harnesses
+        assert self._get_tar_content(container, ".claude/commands/self-review.md") == b"# self review"
+        assert self._get_tar_content(container, ".claude/commands/complexity-audit.md") == b"# complexity audit"
 
 
 class TestInjectGitCredentials:
