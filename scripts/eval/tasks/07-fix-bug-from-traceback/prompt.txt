@@ -1,0 +1,1 @@
+Run `python3 check.py`. It crashes — fix the bug.
