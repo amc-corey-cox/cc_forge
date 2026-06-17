@@ -67,10 +67,31 @@ Following on the community research in #53, the second screening run broadens be
 |-------|-------------|-------------|-----|--------|
 | `qwen3-coder-32k` | `qwen3-coder-32k` | 17 GB | Carry-over baseline; 5/5 in matrix 1 | Alibaba / Qwen |
 | Devstral Small 2 | `devstral:24b` | 14 GB | Mistral, Dec 2025, explicitly agentic-tuned, 256K context, Apache 2.0 | Mistral AI (France) |
-| OLMo 3.1 32B | `olmo-3.1:32b` | ~19 GB | Generalist comparison from a fully-open research team; declares `tools` capability | Allen AI / AI2 (US) |
-| IBM Granite 4.1-8B | `granite4.1:8b` | ~5 GB | Apache 2.0, fast small comparison, IBM Research's open-source release pattern | IBM Research (US) |
-| Gemma 3 12B | `gemma3:12b` | ~7-8 GB | Google. Gemma 4's 12B variant needs Ollama newer than 0.15.4 on tesseract; using 3 as the practical near-equivalent. | Google DeepMind (US) |
+| OLMo 3.1 32B | `olmo-3.1:32b` | 19 GB | Generalist comparison from a fully-open research team | Allen AI / AI2 (US) |
+| IBM Granite 4.1-8B | `granite4.1:8b` | 5 GB | Apache 2.0, fast small comparison, IBM Research's open-source release pattern | IBM Research (US) |
+| Gemma 3 12B | `gemma3:12b` | 8 GB | Google. Gemma 4's 12B variant needs Ollama newer than 0.15.4 on tesseract; using 3 as the practical near-equivalent. | Google DeepMind (US) |
 | Phi-4 | `phi4:14b` | 9 GB | Microsoft, strong reasoning per byte | Microsoft Research (US) |
+
+### Pre-flight result on tesseract (2026-06-17)
+
+Of the six candidates above, **only three declare `tools` capability** in their Ollama manifest as pulled:
+
+- ✅ `qwen3-coder-32k` (carryover)
+- ✅ `devstral:24b`
+- ✅ `granite4.1:8b`
+- ❌ `olmo-3.1:32b` — capabilities: `completion, thinking` (no tools)
+- ❌ `gemma3:12b` — capabilities: `completion, vision` (no tools)
+- ❌ `phi4:14b` — capabilities: `completion` (no tools)
+
+Web research suggested these models had tool calling, but the variants actually pulled via the standard `ollama pull <name>` don't expose it. Without `tools` in the capabilities list, Ollama returns HTTP 400 immediately on the first Claude Code request — they can't participate in the matrix.
+
+This makes the pre-flight check (`ollama show <model> | grep tools`) genuinely load-bearing: it's not redundant with web/blog research, because the blog research and the model-as-pulled don't always agree. The check is now built into `scripts/eval/screening-matrix-2.sh`.
+
+There may be tool-capable variants of OLMo / Phi-4 we didn't pull (e.g., specialized instruction-tuned releases). Adding them to the matrix is straightforward but requires pulling additional ~10-20GB each and re-running the check — a follow-up if matrix 2's results suggest the gap is worth investigating.
+
+### Matrix as run
+
+Three models × six tasks. Run-runner is `screening-matrix-2.sh`; the script filters to only tools-capable models, so the unviable three above are skipped automatically.
 
 ### Pre-flight: confirm tool-calling support before committing run time
 
