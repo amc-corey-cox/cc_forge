@@ -69,10 +69,10 @@ Following on the community research in #53, the second screening run broadens be
 | Devstral Small 2 | `devstral:24b` | 14 GB | Mistral, Dec 2025, explicitly agentic-tuned, 256K context, Apache 2.0 | Mistral AI (France) |
 | OLMo 3.1 32B | `olmo-3.1:32b` | 19 GB | Generalist comparison from a fully-open research team | Allen AI / AI2 (US) |
 | IBM Granite 4.1-8B | `granite4.1:8b` | 5 GB | Apache 2.0, fast small comparison, IBM Research's open-source release pattern | IBM Research (US) |
-| Gemma 3 12B | `gemma3:12b` | 8 GB | Google. Gemma 4's 12B variant needs Ollama newer than 0.15.4 on tesseract; using 3 as the practical near-equivalent. | Google DeepMind (US) |
+| Gemma 3 12B | `gemma3:12b` | 8 GB | Google. Gemma 4's 12B variant needs Ollama newer than 0.15.4 (the version on the forge host); using 3 as the practical near-equivalent. | Google DeepMind (US) |
 | Phi-4 | `phi4:14b` | 9 GB | Microsoft, strong reasoning per byte | Microsoft Research (US) |
 
-### Pre-flight result on tesseract (2026-06-17)
+### Pre-flight result on the forge host (2026-06-17)
 
 Of the six candidates above, **only three declare `tools` capability** in their Ollama manifest as pulled:
 
