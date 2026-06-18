@@ -46,11 +46,14 @@ uv sync
    EOF
    ```
 
-### Usage
+### Run a Session
 
 ```bash
-# In any git repo:
+# In any git repo — launches Claude Code with local Ollama:
 forge
+
+# Or use your Claude API key instead of local models:
+forge run --claude
 
 # Use Aider instead of Claude Code:
 forge run --agent aider
@@ -62,16 +65,56 @@ forge status
 forge stop --all
 ```
 
-### Review Workflow
+What happens when you type `forge`:
 
-1. `forge` syncs your repo to local Forgejo and launches an agent container
-2. The agent works, commits, and pushes to Forgejo
-3. Review changes in Forgejo web UI (`http://localhost:3000`)
-4. Pull approved work: `git pull forgejo <branch>`
-5. Push to GitHub as usual
+1. The forge infrastructure (Forgejo + Ollama proxies) starts if Forgejo isn't already up.
+2. Your repo is pushed to the local Forgejo instance.
+3. An isolated container clones from Forgejo and drops you into an interactive
+   Claude Code session.
+4. The agent works, commits, and opens a PR — all inside Forgejo.
+
+When the session ends you're back in your original shell. The agent's work lives
+in Forgejo until you're ready to bring it over.
+
+### Review and Promote
+
+The agent's PR lands in Forgejo (`http://localhost:3000`). Read the diff there,
+then promote it to GitHub when you're satisfied:
+
+```bash
+# From the same repo, on your workstation:
+forge promote <forgejo-pr-number>
+```
+
+`forge promote` fetches the agent's branch from Forgejo, pushes it to your
+GitHub remote, and opens a GitHub PR with the same title and description.
+
+**Why promote runs on your machine:** The agent container can talk to Forgejo
+but not to GitHub. Promotion is the deliberate step where reviewed work crosses
+that boundary — your `gh` credentials stay with you, never inside the container.
+You'll need `gh` authenticated. On a single machine, also set `FORGE_GITHUB_REPO`
+(or `FORGE_GITHUB_OWNER`) in your config; if forge runs on a separate server, you
+promote from your workstation and it infers the repo from `origin`. See
+[docs/FORGE-USAGE.md](docs/FORGE-USAGE.md) for both setups.
+
+### The Full Loop
+
+A typical issue-to-PR cycle looks like this:
+
+```
+forge run --claude          # start a session
+  ↳ agent works on the task
+  ↳ agent runs /self-review and /complexity-audit
+  ↳ agent opens a Forgejo PR
+                            # session ends, you're back in your shell
+forge promote 1             # push the PR to GitHub
+```
+
+See [docs/FORGE-USAGE.md](docs/FORGE-USAGE.md) for the detailed walkthrough.
 
 ## Documentation
 
+- [docs/FORGE-USAGE.md](docs/FORGE-USAGE.md) — Running a session end-to-end
 - [DESIGN.md](DESIGN.md) — Architecture and safety model
 - [ROADMAP.md](ROADMAP.md) — Implementation phases
 - [AGENTS.md](AGENTS.md) — Instructions for AI agents working in this repo
@@ -79,7 +122,8 @@ forge stop --all
 
 ## Status
 
-Phase 1: Foundation — `forge` CLI with end-to-end session flow.
+Phase 1 — the human-driven single-issue loop. An agent takes a task, works in
+isolation, self-reviews, and hands back a promotable PR.
 
 See [ROADMAP.md](ROADMAP.md) for the full plan.
 
