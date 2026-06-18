@@ -2,7 +2,7 @@
 
 How Claude Code performs against local Ollama models, and which ones we recommend. Part of the [Track 1 evaluation](https://github.com/amc-corey-cox/cc_forge/issues) of the agent-architecture exploration.
 
-> **Status:** First screening matrix run complete (2026-06-17). Headline result: `qwen3-coder-32k` is the only model in our initial shortlist that meaningfully drives Claude Code in this harness. Recommendation stands as the dogfood default.
+> **Status:** Screening matrices 1 (2026-06-17) and 2 (2026-06-18) complete. Headline result: `qwen3-coder-32k` is still the only model in either shortlist that meaningfully drives Claude Code in this harness. Matrix 2 added five more candidates (Devstral, OLMo, Granite, Gemma 3, Phi-4) — three were filtered by the tool-support pre-flight, the other two ran but failed every capability task. Recommendation stands as the dogfood default.
 
 ## Headline cost model
 
@@ -50,7 +50,7 @@ Eval harness invocation: `MODELS="qwen3-coder-32k gpt-oss:20b gpt-oss-64k" ./scr
 
 `qwen3-coder-32k` stays as the default `FORGE_CLAUDE_MODEL` in `src/cc_forge/config.py`. The other two are not viable replacements for this combination of (Claude Code harness, CPU-only host, our task set). The next eval pass (probably issue #54, cloud Ollama services) is where we'd test whether the same models become viable with more compute behind them, or whether something like `qwen3-coder-32k` running on a faster backend gives a meaningful speed-up.
 
-## Screening matrix 2 — candidates (planned)
+## Results — screening matrix 2 (2026-06-18)
 
 Following on the community research in #53, the second screening run broadens beyond the initial Qwen/GPT-OSS family to test whether other open-weight families produce different capability profiles in our harness. The shortlist deliberately spans:
 
@@ -93,23 +93,32 @@ There may be tool-capable variants of OLMo / Phi-4 we didn't pull (e.g., special
 
 Three models × six tasks. Run-runner is `screening-matrix-2.sh`; the script filters to only tools-capable models, so the unviable three above are skipped automatically.
 
-### Pre-flight: confirm tool-calling support before committing run time
+| Task | qwen3-coder-32k | devstral:24b | granite4.1:8b |
+|------|-----------------|--------------|---------------|
+| 01-sanity-pong | ran (8 min) | ran (5 min) | ran (3 min) |
+| 02-fix-typo | **PASS** (28 min) | fail (11 min) | fail (5 min) |
+| 03-add-docstring | **PASS** (28 min) | fail (21 min) | fail (4 min) |
+| 04-rename-variable | **PASS** (29 min) | fail (10 min) | fail (4 min) |
+| 05-fix-failing-test | **PASS** (31 min) | fail (11 min) | fail (4 min) |
+| 06-implement-from-stub | **PASS** (36 min) | fail (6 min) | fail (4 min) |
+| **Capability pass-rate** | **5/5** | **0/5** | **0/5** |
 
-Matrix 1 surfaced two models pulled to tesseract that Ollama returns `"does not support tools"` for (`qwen:72b`, `vanilj/midnight-miqu-70b-v1.5`). The fix is cheap: before adding any model to a matrix, run
+qwen3-coder-32k's column carries over verbatim from matrix 1 — we did not re-run it for this matrix.
 
-```bash
-ollama show <model> | grep -i tools
-```
+### Interpretation
 
-on the forge host. If the `Capabilities` section doesn't include `tools`, the model can't drive Claude Code and shouldn't be added — Claude Code's harness depends on tool calling. The matrix-runner script for this run does this check automatically and refuses to include models that fail it.
+- **qwen3-coder-32k — recommended (unchanged).** Same 5/5 result as matrix 1. Still the only model on either shortlist that meaningfully drives Claude Code in this harness.
+- **devstral:24b — fails despite declared `tools` capability.** Every failed task ended after exactly one model turn with `exit_code 0`. The model acknowledges the request ("I'll help you fix the typo in `README.md`. Let me look at the file."), but then never emits an actual tool call — it just stops, sometimes outputting fake skill tags (`<skill skill="Glob"></skill>`) as text, sometimes admitting "I don't have access to the files or tools." The Ollama manifest says `tools` is supported; Devstral's behavior in this harness says otherwise. Possibly a tokenizer or chat-template mismatch between Devstral's tool-calling format and what Claude Code's harness expects from Ollama — but not something we can fix from the harness side.
+- **granite4.1:8b — same shape as devstral, smaller and faster.** 0/5, same single-turn narration pattern. The 8B size means each failed task only burned ~4 min — cheap failure, but a failure all the same. Granite did not crash; Claude Code exited cleanly each time with the model just refusing to act.
+- **The pre-flight filter held its weight.** Three of six candidates (OLMo 3.1, Gemma 3, Phi-4) were skipped without burning any runtime — they don't declare `tools` in their Ollama manifests. That saved an estimated 6-12 hours of wall-clock that would have ended in `HTTP 400 does not support tools` from Ollama.
 
-### Expected cost on tesseract
+### Caveat: pre-flight bug discovered mid-matrix
 
-With most candidates 5-19 GB instead of matrix 1's 17 GB qwen3 (and the smaller ones much faster on CPU per token), the per-task wall-clock should drop noticeably for everything except qwen3 and OLMo-2-32B. Rough estimate: **8-12 hours total for the full 6×6 run**, especially if the smaller models can run in parallel without RAM contention. Capture per-task duration in `meta.json` as usual.
+The first attempt to run matrix 2 incorrectly skipped `devstral:24b` despite its having `tools` capability. Root cause: `set -o pipefail` + `grep -q` — once grep matched and exited, it SIGPIPE'd the still-writing `ollama show`, and the non-zero pipeline exit propagated as a falsy `if`. Larger Ollama manifests (like Devstral's 21-line output) were just long enough to trip it. Fix in `scripts/eval/screening-matrix-2.sh`: capture `ollama show` output into a variable first, then grep. Worth recording because the same bash gotcha will bite future preflight scripts that combine pipefail with grep -q.
 
-### Results
+### What this changes about the recommendation
 
-_To be populated after the run._
+Nothing. `qwen3-coder-32k` remains the default `FORGE_CLAUDE_MODEL`. The candidates that ran in matrix 2 (Devstral, Granite) failed in a way that suggests an Ollama-side or model-side tool-call format mismatch rather than something a different prompt or harness tweak would unlock. The next eval pass (issue #54, cloud Ollama services) is where we'd test whether the same models become viable with a different inference backend that handles tool calls differently.
 
 ## Pre-flight requirements (run on the forge host)
 
@@ -119,5 +128,24 @@ Before running an eval pass:
 - The agent image is built (`docker images cc-forge-agent:latest`).
 - The `forge-network` exists and `forge-ollama-proxy` is running.
 - The candidate models are pulled (`ollama list` should include each).
+- Each candidate declares `tools` capability: `ollama show <model> | grep -i tools`. Without it, Ollama returns HTTP 400 immediately and the model can't drive Claude Code. `scripts/eval/screening-matrix-2.sh` does this check automatically and refuses to include models that fail it.
 
 Eventually [`forge doctor`](https://github.com/amc-corey-cox/cc_forge/issues/57) will check these automatically.
+
+## Confirmed unusable for this harness
+
+Models we've actually exercised against Claude Code's harness and shown not to drive it. Useful for `ollama rm` cleanup and for not re-pulling them in future runs.
+
+| Model | Why it fails | Source |
+|-------|--------------|--------|
+| `gpt-oss:20b` | Runs but fails every capability check (0/5) | Matrix 1 |
+| `gpt-oss-64k` | 5/6 hit Claude Code's HTTP timeout with zero output | Matrix 1 |
+| `qwen:72b` | No `tools` capability in Ollama manifest | Matrix 1 pre-flight |
+| `vanilj/midnight-miqu-70b-v1.5` | No `tools` capability in Ollama manifest | Matrix 1 pre-flight |
+| `devstral:24b` | `tools` declared but never emits real tool calls (0/5) | Matrix 2 |
+| `granite4.1:8b` | Same single-turn narration pattern as Devstral (0/5) | Matrix 2 |
+| `olmo-3.1:32b` | No `tools` capability in Ollama manifest | Matrix 2 pre-flight |
+| `gemma3:12b` | No `tools` capability in Ollama manifest | Matrix 2 pre-flight |
+| `phi4:14b` | No `tools` capability in Ollama manifest | Matrix 2 pre-flight |
+
+The Devstral / Granite failure mode is identical: `exit_code 0`, `num_turns: 1`, model emits a polite acknowledgment ("I'll help you fix that, let me look at the file…") and then never issues a tool call. The Ollama manifest says they support tools; their actual output stream in this harness doesn't. Possibly a tokenizer or chat-template mismatch — not something fixable from our side without a different inference backend.
