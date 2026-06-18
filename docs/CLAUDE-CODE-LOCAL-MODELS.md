@@ -134,14 +134,12 @@ Eventually [`forge doctor`](https://github.com/amc-corey-cox/cc_forge/issues/57)
 
 ## Confirmed unusable for this harness
 
-Models we've actually exercised against Claude Code's harness and shown not to drive it. Useful for `ollama rm` cleanup and for not re-pulling them in future runs.
+Models we exercised as matrix candidates against Claude Code's harness and shown not to drive it. Useful for not re-pulling them for future forge eval passes. **Note:** scoped to candidates we deliberately tested for this application. Models that happen to be on the host for unrelated purposes — even ones that lack `tools` capability — are out of scope; only remove if you know you don't use them elsewhere.
 
 | Model | Why it fails | Source |
 |-------|--------------|--------|
 | `gpt-oss:20b` | Runs but fails every capability check (0/5) | Matrix 1 |
 | `gpt-oss-64k` | 5/6 hit Claude Code's HTTP timeout with zero output | Matrix 1 |
-| `qwen:72b` | No `tools` capability in Ollama manifest | Matrix 1 pre-flight |
-| `vanilj/midnight-miqu-70b-v1.5` | No `tools` capability in Ollama manifest | Matrix 1 pre-flight |
 | `devstral:24b` | `tools` declared but never emits real tool calls (0/5) | Matrix 2 |
 | `granite4.1:8b` | Same single-turn narration pattern as Devstral (0/5) | Matrix 2 |
 | `olmo-3.1:32b` | No `tools` capability in Ollama manifest | Matrix 2 pre-flight |
