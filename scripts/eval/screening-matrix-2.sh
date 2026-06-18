@@ -33,8 +33,14 @@ MODELS=(
 preflight_models() {
     local kept=()
     local rejected=()
+    local out
+    # Capture `ollama show` output first instead of piping directly into grep.
+    # Under `set -o pipefail`, `grep -q` exits 0 as soon as it finds a match,
+    # which can SIGPIPE the upstream `ollama show` (exit 141) and fail the
+    # pipeline — the larger the model's manifest, the more likely it trips.
     for m in "${MODELS[@]}"; do
-        if ollama show "$m" 2>/dev/null | grep -qi "^[[:space:]]*tools[[:space:]]*$"; then
+        out=$(ollama show "$m" 2>/dev/null || true)
+        if echo "$out" | grep -qi "^[[:space:]]*tools[[:space:]]*$"; then
             kept+=("$m")
         else
             rejected+=("$m")
