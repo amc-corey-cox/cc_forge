@@ -120,6 +120,30 @@ Service files are in `docs/` directory:
 | [`ollama-vulkan.service`](ollama-vulkan.service) | 11435 | Vulkan GPU (Intel Arc), stock Ollama 0.15+ |
 | [`ollama-ipex.service.legacy`](ollama-ipex.service.legacy) | 11434 | IPEX-LLM GPU (legacy, rename to `.service` to use) |
 
+## Ollama Version Requirements
+
+cc_forge depends on three things from Ollama: the Anthropic Messages API endpoint, working tool-call handling, and chat-template support for the model families in the eval shortlist. Each one effectively pins a minimum version.
+
+| Capability | Minimum Ollama version | Source |
+|------------|------------------------|--------|
+| Anthropic Messages API (`/v1/messages`) | 0.15 | Required for `forge` agent containers and Claude Code |
+| Tool-call template handling for current open-weight families (Mistral, Granite, OLMo, Gemma 3+) | recent (0.20+ recommended) | Older Ollama can parse some templates but emit tool calls incorrectly — observed as "model declares `tools` but never issues one" in screening matrix 2 |
+| `Gemma 4` 12B chat template | 0.20+ (varies by release) | Anything older falls back to Gemma 3 |
+
+### Current recommendation
+
+Run the latest stable Ollama release on the forge host. The minimum is 0.15 (Anthropic API), but a meaningful chunk of the open-weight ecosystem's tool-calling reliability lives behind the 0.20+ template improvements. Sticking on 0.15 leaves a class of model failures that look like model-capability problems but are actually template-version problems.
+
+### How to check
+
+```bash
+ollama --version
+```
+
+### Why this matters for the eval matrices
+
+Screening matrix 2 ran with Ollama 0.15.4 and surfaced Devstral 24B and Granite 4.1 8B failing in a "polite acknowledgment with no tool call" pattern — exactly the shape of failure a stale chat template produces. The matrix 2 result table in `docs/CLAUDE-CODE-LOCAL-MODELS.md` is therefore configuration-bound, not model-capability-bound for those two candidates. Re-running on a current Ollama is the cheapest way to distinguish which failure category they actually belong to. See [the matrix 2 interpretation section](CLAUDE-CODE-LOCAL-MODELS.md#interpretation) for context.
+
 ## Stock `ollama.service` Reactivation After Upgrades
 
 **Problem.** Ollama's official installer (`curl https://ollama.ai/install.sh | sh`) always (re)creates `/etc/systemd/system/ollama.service` — a vanilla unit file that:
@@ -172,6 +196,74 @@ sudo systemctl start ollama-cpu.service
 ### Detecting the problem
 
 `ollama-cpu.service` cycling in `auto-restart` state with `bind: address already in use` in `journalctl -u ollama-cpu` means the stock `ollama.service` is back. [Issue #57](https://github.com/amc-corey-cox/cc_forge/issues/57) (`forge doctor` pre-flight check) will surface this automatically once implemented.
+
+## Post-Upgrade Verification (forge-specific)
+
+After upgrading Ollama, the service-reactivation ritual above gets the daemon running again, but it doesn't confirm that forge itself still works against the new version. These checks are cheap and catch breakage early.
+
+### 1. Confirm the new version
+
+```bash
+ollama --version
+```
+
+Cross-check against the requirements table above.
+
+### 2. Confirm `ollama list` survived the upgrade
+
+```bash
+ollama list
+```
+
+Compare against a snapshot taken before the upgrade (`ollama list > ~/.ollama-list.pre-upgrade.txt`). Ollama major version jumps occasionally rewrite the model-store format; missing entries here mean something to investigate before going further.
+
+### 3. Confirm forge's reach to Ollama
+
+From the forge host, the agent containers reach Ollama via the `forge-ollama-proxy` bridge. Smoke-test the bridge:
+
+```bash
+# From a forge agent container, or from the host with the proxy resolvable
+curl -s http://forge-ollama-proxy:11434/api/tags | head -20
+```
+
+A populated JSON model list confirms both the proxy and the upgraded daemon are reachable.
+
+### 4. Re-run the matrix 2 pre-flight check
+
+```bash
+cd ~/Code/cc_forge && ./scripts/eval/screening-matrix-2.sh --check
+```
+
+This re-checks `tools` capability for each candidate. Any model that flipped from rejected to accepted (or vice versa) is a finding — record it in the post-upgrade observations section of `docs/CLAUDE-CODE-LOCAL-MODELS.md`.
+
+### 5. Baseline-model probe
+
+Confirm the known-good model still drives Claude Code end-to-end. The cheapest probe is the same `02-fix-typo` task used in matrix runs:
+
+```bash
+RUN_ID="post-upgrade-smoke-$(date -u +%Y%m%dT%H%M%SZ)" \
+MODELS="qwen3-coder-32k" \
+TASKS_DIR=./scripts/eval/tasks \
+OLLAMA_URL="http://forge-ollama-proxy:11434" \
+./scripts/eval/run-matrix.sh
+```
+
+Expected: a single PASS on `02-fix-typo` within ~30 min on CPU (first call) or seconds (if the model is warm). A timeout or failure here means the upgrade regressed something forge depends on — investigate before letting agents loose.
+
+### 6. Optional: regression check for non-forge models
+
+If the host runs Ollama for purposes outside cc_forge (e.g., the `vanilj/midnight-miqu-70b-v1.5` and `qwen:72b` workloads), confirm they still respond:
+
+```bash
+ollama run vanilj/midnight-miqu-70b-v1.5 "Reply with just OK."
+ollama run qwen:72b "Reply with just OK."
+```
+
+Major Ollama version jumps occasionally retire support for very old quantization formats or chat templates; a non-trivial response here is the cheapest signal that nothing in the broader Ollama installation regressed.
+
+### 7. Capture findings in `CLAUDE-CODE-LOCAL-MODELS.md`
+
+When the upgrade reveals anything that changes matrix interpretation — newly accepted models, fixed tool-call emission, regressions, etc. — append a "Post-Ollama-upgrade observations" subsection to `docs/CLAUDE-CODE-LOCAL-MODELS.md`. The eval doc is the canonical record of what works against which Ollama version; the setup doc shouldn't accumulate those findings inline.
 
 ## Model Compatibility
 
