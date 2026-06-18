@@ -15,12 +15,12 @@
 
 set -euo pipefail
 
-# Candidates for screening matrix 2. Ollama names; ! prefix marks the
+# Candidates for screening matrix 2. Ollama names. The first entry is the
 # carry-over baseline from matrix 1 (we already trust it works in this harness).
 MODELS=(
     "qwen3-coder-32k"   # carry-over baseline
     "devstral:24b"      # Mistral, agentic-coding-specialized
-    "olmo-3.1:32b"      # Allen AI, generalist + fully open, declared tools support
+    "olmo-3.1:32b"      # Allen AI, generalist + fully open (no tools per ollama manifest as-pulled)
     "granite4.1:8b"     # IBM Research, Apache 2.0
     "gemma3:12b"        # Google. Gemma 4 (12b) requires newer Ollama than 0.15.4; fell back to 3.
     "phi4:14b"          # Microsoft, strong-per-byte
@@ -53,6 +53,12 @@ preflight_models() {
             echo "  - $m"
         done
         echo
+    fi
+
+    if [ ${#kept[@]} -eq 0 ]; then
+        echo "ERROR: no candidate models passed the tool-support pre-flight." >&2
+        echo "Pull or fix a tools-capable variant for at least one model before re-running." >&2
+        exit 1
     fi
 
     echo "These models will be included in the matrix:"

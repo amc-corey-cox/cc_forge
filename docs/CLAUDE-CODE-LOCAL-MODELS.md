@@ -55,9 +55,9 @@ Eval harness invocation: `MODELS="qwen3-coder-32k gpt-oss:20b gpt-oss-64k" ./scr
 Following on the community research in #53, the second screening run broadens beyond the initial Qwen/GPT-OSS family to test whether other open-weight families produce different capability profiles in our harness. The shortlist deliberately spans:
 
 - **An agentic-coding-specialized model** (Devstral Small 2)
-- **A fully-open research-style model** (OLMo-2 — releases weights + data + training code in the AI2 mold)
+- **A fully-open research-style model** (OLMo 3.1 — releases weights + data + training code in the AI2 mold)
 - **An enterprise-open Apache-2.0 model** (IBM Granite 4.1)
-- **A recent Google release** (Gemma 4 — captures the "what's hot from a major lab this month" angle)
+- **A recent Google release** (Gemma 3 — captures the "what's hot from a major lab this month" angle; Gemma 4's 12B variant needs a newer Ollama than the host runs)
 - **A small-but-strong reasoning model** (Phi-4)
 - **`qwen3-coder-32k` retained as the carryover baseline** — matrix 1's only 5/5 capability pass
 
