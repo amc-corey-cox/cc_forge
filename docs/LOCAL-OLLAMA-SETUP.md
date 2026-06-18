@@ -182,16 +182,37 @@ sudo systemctl daemon-reload && \
 sudo systemctl restart ollama-cpu.service
 ```
 
-### Cleaner alternative: upgrade by binary replacement
+### Cleaner alternative: upgrade by tarball extraction
 
-Skip the installer; replace only the binary so the service file is never touched:
+Skip the installer; extract the release tarball directly so the systemd unit files are never touched. Ollama releases ship as `.tar.zst` archives containing `bin/ollama` plus a `lib/ollama/` tree of inference backends — a single-file binary swap is no longer enough.
+
+Find the current release asset URL on the [Ollama GitHub releases page](https://github.com/ollama/ollama/releases) (the linux-amd64 build is `ollama-linux-amd64.tar.zst`; the `-rocm` and `-mlx` variants are for AMD GPUs and Apple Silicon respectively).
 
 ```bash
-sudo systemctl stop ollama-cpu.service
-sudo curl -fL https://ollama.ai/download/ollama-linux-amd64 -o /usr/local/bin/ollama
-sudo chmod +x /usr/local/bin/ollama
-sudo systemctl start ollama-cpu.service
+# 1. Download (no sudo needed; ~1.4 GB for v0.30.10)
+mkdir -p ~/tmp/ollama-upgrade && cd ~/tmp/ollama-upgrade
+curl -fL -o ollama-linux-amd64.tar.zst \
+  https://github.com/ollama/ollama/releases/download/v0.30.10/ollama-linux-amd64.tar.zst
+
+# 2. Stop services (do both if you run vulkan as well — they share the binary)
+sudo systemctl stop ollama-cpu.service ollama-vulkan.service
+
+# 3. Back up the old install
+sudo cp /usr/local/bin/ollama /usr/local/bin/ollama.$(ollama --version | awk '{print $NF}')
+sudo mv /usr/local/lib/ollama /usr/local/lib/ollama.$(ollama --version | awk '{print $NF}')
+
+# 4. Extract the new tarball over /usr/local
+sudo tar --zstd -xf ollama-linux-amd64.tar.zst -C /usr/local/
+
+# 5. Confirm and start
+/usr/local/bin/ollama --version
+sudo systemctl start ollama-cpu.service ollama-vulkan.service
+systemctl is-active ollama-cpu ollama-vulkan
 ```
+
+Why the two backups (binary + lib dir): the lib dir contains inference backends (CUDA variants, CPU microarchitecture variants, libggml-base versioned suffixes). Newer tarballs introduce new files but don't remove old ones — extracting on top leaves stale libs lying around. Moving the old lib dir aside gives a clean install and a one-step rollback (`sudo mv` it back, restore the binary backup).
+
+Disk cost: each `.tar.zst` is ~1.4 GB and each extracted `lib/ollama` is roughly 6 GB (the CUDA libs are the bulk). Keeping the previous version's lib dir around as `lib/ollama.<old-version>/` doubles that until you're confident the new install works and prune the backup.
 
 ### Detecting the problem
 
