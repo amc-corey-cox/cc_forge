@@ -34,7 +34,7 @@ preflight_models() {
     local kept=()
     local rejected=()
     for m in "${MODELS[@]}"; do
-        if ollama show "$m" 2>/dev/null | grep -qi "^\s*tools\s*$"; then
+        if ollama show "$m" 2>/dev/null | grep -qi "^[[:space:]]*tools[[:space:]]*$"; then
             kept+=("$m")
         else
             rejected+=("$m")
