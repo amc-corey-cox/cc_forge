@@ -1,7 +1,7 @@
 # Intel Arc GPU Model Deployment
 
 > **Exploration notes — not the current shipping path.** forge's default agent is Claude
-> Code with the local model `qwen3-coder-32k` (CPU, the only confirmed-working default).
+> Code with the local model `qwen3-coder-32k` (CPU; the current default).
 > For current local-model guidance see [CLAUDE-CODE-LOCAL-MODELS.md](CLAUDE-CODE-LOCAL-MODELS.md);
 > GPU acceleration is tracked in #27.
 

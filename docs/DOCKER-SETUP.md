@@ -78,14 +78,16 @@ docker system prune
 This doc covers installing Docker itself. For how forge *uses* it — the agent
 container, the Forgejo + Ollama-proxy services, and the safety model — see
 [DESIGN.md](../DESIGN.md) and [docker/README.md](../docker/README.md). In short: the
-agent runs in an isolated container that clones from Forgejo, with **no host mount and
-no GitHub credentials handed to it**; reviewed work reaches GitHub only via
-`forge promote`, run on the host.
+agent runs in an isolated container that clones from Forgejo, with **no host mount**; your
+GitHub credentials aren't exposed to it as env vars (a configured token is kept in a
+shim-only file for `gh` reads), and reviewed work reaches GitHub via `forge promote`, run
+on the host.
 
 ## Security Considerations
 
 - Users in the `docker` group effectively have root-equivalent access on the host — only
   add trusted users to it.
-- The agent container has no host filesystem mount and isn't handed GitHub credentials.
+- The agent container has no host filesystem mount, and your GitHub credentials aren't
+  exposed to it as env vars (a configured token is kept in a shim-only file for `gh` reads).
   See [DESIGN.md](../DESIGN.md) for the full safety model and its limits — notably, there
   is no network egress control yet.

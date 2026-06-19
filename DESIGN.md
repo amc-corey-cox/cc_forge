@@ -2,16 +2,16 @@
 
 ## Project Vision
 
-CC Forge is a CLI tool that gives you a safe, containerized AI agent session for any git repository. Type `forge` in a repo and get an interactive Claude Code session backed by local Ollama, with all changes going through a local Forgejo instance as a review gate before you promote approved work to GitHub.
+CC Forge is a CLI tool that gives you a safe, containerized AI agent session for any git repository. Type `forge` in a repo and get an interactive Claude Code session backed by local Ollama, with all changes going through a local Forgejo instance as a review gate; from there you can optionally promote approved work to GitHub.
 
 The agent can never touch your real repos or host filesystem.
 
 ### Core Principles
 
-1. **Local-First**: All execution on local hardware with local models. No cloud dependencies.
+1. **Local-First**: All execution on local hardware with local models. No cloud dependencies (promoting to GitHub is optional).
 2. **Safe by Default**: Agents clone from Forgejo, not bind-mounted. This is the safety boundary.
 3. **Simple to Use**: One command (`forge`) does everything — starts infrastructure, syncs to Forgejo, launches agent.
-4. **Transparent**: All agent work lands in Forgejo as commits/PRs. Review there, then `forge promote` approved work to GitHub.
+4. **Transparent**: All agent work lands in Forgejo as commits/PRs. Review there, then optionally `forge promote` approved work to GitHub.
 
 ---
 
@@ -53,7 +53,7 @@ The key security boundary is **no host mount**. The agent container:
 - Reaches Forgejo and Ollama via network proxies
 - Has no access to host filesystem or host mounts
 - All output is visible as git commits in Forgejo
-- Isn't handed GitHub credentials — GitHub access is mediated by the `gh` shim, and promotion runs on the host with your own `gh` auth. (A configured `FORGE_GITHUB_TOKEN` for the agent's issue reads is written to a `0600` shim-only file, never an env var; with no egress control a determined agent could still locate it, so scope it read-only.)
+- Isn't handed GitHub credentials — GitHub access is mediated by the `gh` shim, and promotion runs on the host with your own `gh` auth (falling back to `FORGE_GITHUB_TOKEN` if `gh` isn't logged in). (A configured `FORGE_GITHUB_TOKEN` for the agent's issue reads is written to a `0600` shim-only file, never an env var; with no egress control a determined agent could still locate it, so scope it read-only.)
 - Runs as a non-root user, under per-container memory and PID limits
 
 ### Network Access: Intent vs. Current State

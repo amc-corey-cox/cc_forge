@@ -1,7 +1,7 @@
 # CPU Tier Model Deployment
 
 > **Exploration notes — not the current default.** forge's current default local model is
-> `qwen3-coder-32k` (the only one confirmed working). For current local-model guidance see
+> `qwen3-coder-32k`. For current local-model guidance see
 > [CLAUDE-CODE-LOCAL-MODELS.md](CLAUDE-CODE-LOCAL-MODELS.md).
 
 ## Overview
