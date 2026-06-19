@@ -1,114 +1,89 @@
 # Local Server Ollama Configuration
 
-This documents the Ollama setup on a local home server with Intel Arc GPU.
+This documents the Ollama setup on a local home server with a Vulkan-capable consumer GPU.
 
 ## Service Architecture
 
-**Recommended: Run both services simultaneously** on different ports:
+A single Ollama service is sufficient on 0.30.x. The Ollama daemon's bundled `llama.cpp` runtime auto-detects a Vulkan-compatible GPU when present and offloads what fits to VRAM, with the rest staying on CPU. There's nothing to configure per service — the same daemon transparently does what the two-service pattern on 0.15.x had to be told explicitly.
 
 ```
 /etc/systemd/system/
-├── ollama-cpu.service      # CPU only, port 11434 (default)
-├── ollama-vulkan.service   # Vulkan GPU (Intel Arc), port 11435
-├── ollama.service          # Original stock Ollama (preserved as baseline)
-└── ollama-ipex.service     # (optional) IPEX-LLM GPU, copy from .legacy file
+├── ollama-cpu.service      # The service we run (port 11434)
+├── ollama.service          # Stock unit; disabled (see "Stock ollama.service Reactivation" below)
+└── ollama-vulkan.service   # Legacy from 0.15.x; disabled — see notes
 ```
 
-*Note: The IPEX service file is provided as `ollama-ipex.service.legacy` in this repo. Rename to `.service` when installing if needed.*
+The IPEX-LLM legacy path (`ollama-ipex.service.legacy`) is provided in this repo for reference if anyone wants to compare against the older Intel-specific runtime, but it lacks Claude Code's Anthropic API support and is not part of the current setup.
 
-**Port assignments:**
-- `localhost:11434` — CPU service (reliable, works with all model sizes)
-- `localhost:11435` — Vulkan GPU service (fast, auto-splits large models)
+**Why `ollama-cpu` despite the name?** The name is historical. On 0.15.x it really did mean CPU-only — the service file set `OLLAMA_NUM_GPU=0`. On 0.30.x that env var is silently ignored by `llama-server`, so the service is now actually CPU+GPU. The name stayed because forge has hard-coded the port (11434) into a lot of places; renaming the unit would create more churn than it saves. Treat the name as "the service forge depends on," not as a backend constraint.
 
-**Note:** Services bind to `127.0.0.1` (localhost only) by default for security. See [Network Access](#network-access) if you need remote access.
+**Why `ollama-vulkan` is now redundant.** The original purpose was to provide a Vulkan-accelerated path on a separate port (11435) for clients that wanted GPU. With auto-detection in 0.30.x, the port-11434 service already offers that. Two services running simultaneously means two daemons competing for the same finite VRAM — a real OOM risk if both load models. Disable it: `sudo systemctl disable --now ollama-vulkan.service`.
+
+**Port:** In this setup the service is configured to bind `0.0.0.0:11434` so forge's agent containers can reach it across the docker bridge. (Ollama's stock default is `127.0.0.1:11434` — localhost-only. See [Network Access](#network-access) for why we change it and the firewall implications.)
 
 ## Quick Reference
 
-| Service | Port | Best For | Notes |
-|---------|------|----------|-------|
-| `ollama-cpu` | 11434 | Large models (70B), baseline | Slower but reliable |
-| `ollama-vulkan` | 11435 | Small/medium models | Fast GPU, auto-splits if needed |
-| `ollama-ipex` | 11434 | Legacy IPEX setup | Older Ollama version, no Claude Code support |
+| Service | Port | Status | Notes |
+|---------|------|--------|-------|
+| `ollama-cpu` | 11434 | **active** | The one forge depends on. Auto-offloads to GPU under 0.30.x despite the name. |
+| `ollama-vulkan` | 11435 | **disabled** | Legacy from the 0.15.x two-service pattern; redundant on 0.30.x. |
+| `ollama-ipex` | 11434 | not installed | Legacy IPEX-LLM path; no Anthropic API support. Reference only. |
+| `ollama` (stock) | 11434 | **disabled** | Resurrected by official installer upgrades; see ["Stock ollama.service Reactivation"](#stock-ollamaservice-reactivation-after-upgrades). |
 
-### Recommended Setup (Both Services)
+### Setup
 
 ```bash
-# Enable both services to run simultaneously
-sudo systemctl enable --now ollama-cpu ollama-vulkan
+# Enable and start the service
+sudo systemctl enable --now ollama-cpu.service
 
-# Verify both are running
-systemctl is-active ollama-cpu ollama-vulkan
+# Verify
+systemctl is-active ollama-cpu
+curl http://localhost:11434/api/tags | head -5
 
-# Test each endpoint
-curl http://localhost:11434/api/tags  # CPU
-curl http://localhost:11435/api/tags  # GPU
+# Sanity-check GPU offload (under 0.30.x, expect a CPU/GPU split)
+ollama run qwen3-coder-32k "Reply with OK."
+ollama ps   # PROCESSOR column should show a CPU/GPU split, not 100% CPU
 ```
 
-### Using Each Service
+### Using the service
 
 ```bash
-# Use CPU service (port 11434 - default)
-ollama run llama3.3:70b-instruct-q6_K "Hello"
-OLLAMA_HOST=localhost:11434 ollama run ...
+# Local Ollama CLI (defaults to localhost:11434)
+ollama run qwen3-coder-32k "Hello"
 
-# Use Vulkan GPU service (port 11435)
-OLLAMA_HOST=localhost:11435 ollama run llama3.1:latest "Hello"
+# Claude Code via Anthropic API endpoint
+ANTHROPIC_BASE_URL=http://localhost:11434 claude --model qwen3-coder-32k
 
-# Claude Code with CPU (recommended - reliable)
-ANTHROPIC_BASE_URL=http://localhost:11434 claude --model llama3.1
-
-# Claude Code with GPU via shim (see Claude Code Integration section below)
-# Direct Vulkan (11435) crashes with Anthropic API - must use shim on port 4001
-ANTHROPIC_BASE_URL=http://localhost:4001 claude --model llama3.1
-```
-
-### Legacy: Single Service Mode
-
-If you prefer only one service at a time (old behavior):
-
-```bash
-# Switch to CPU only
-sudo systemctl disable --now ollama-vulkan ollama-ipex
-sudo systemctl enable --now ollama-cpu
-
-# Switch to Vulkan GPU only (change port to 11434 in service file first)
-sudo systemctl disable --now ollama-cpu ollama-ipex
-sudo systemctl enable --now ollama-vulkan
-
-# Check which is active
-systemctl is-active ollama ollama-cpu ollama-ipex ollama-vulkan
+# Forge agent containers reach the same service via the docker-bridge alias
+# (configured in docker-compose.yml as `forge-ollama-proxy`)
 ```
 
 ## Recommendations
 
-**Best setup:** Run both `ollama-cpu` and `ollama-vulkan` simultaneously.
+`ollama-cpu` handles all model sizes. The daemon auto-splits the model between VRAM and CPU RAM based on what fits, so the only practical constraint is whether a model loads at all (and how fast it runs once loaded). For a consumer-class GPU with a moderate VRAM budget (the forge host's class):
 
-| Model Size | Recommended Port | Why |
-|------------|------------------|-----|
-| ≤16GB (7B-13B) | 11435 (Vulkan) | Full GPU acceleration |
-| 16-48GB (30B-70B) | 11435 (Vulkan) | Auto-splits GPU+CPU |
-| >48GB or reliability needed | 11434 (CPU) | Pure CPU, always works |
+| Model size | Behavior on 0.30.x | Notes |
+|------------|--------------------|-------|
+| ≤14 GB (fits VRAM) | Full GPU | Fastest — see qwen3 probe results in [`CLAUDE-CODE-LOCAL-MODELS.md`](CLAUDE-CODE-LOCAL-MODELS.md#headline-1--10x-speedup-most-of-it-is-gpu-offload-not-just-newer-inference-code) |
+| 14-40 GB | Auto-split GPU+CPU | Useful chunk in VRAM; rest in RAM. Most of forge's recommended models live here. |
+| >40 GB | Mostly CPU | Slower but works. `qwen:72b` and `llama3.3:70b` end up here. |
 
-### Performance (llama3.1:latest 4.7GB)
+### Performance (legacy 0.15.x measurements)
+
+These benchmarks predate the 0.30.x upgrade and the architecture switch to `llama-server`. They're preserved as historical baseline; current performance is roughly 10x better wall-clock for full eval tasks (see the post-upgrade observations doc).
 
 | Backend | Prompt Eval | Generation |
 |---------|-------------|------------|
-| IPEX GPU | 147.6 tok/s | 39.0 tok/s |
-| Vulkan GPU | TBD | TBD |
-| CPU | 47.6 tok/s | 18.1 tok/s |
+| IPEX GPU (legacy) | 147.6 tok/s | 39.0 tok/s |
+| Vulkan GPU (0.15.x) | TBD | TBD |
+| CPU only (0.15.x) | 47.6 tok/s | 18.1 tok/s |
 
-*Note: Vulkan benchmarks pending. IPEX has better performance than Vulkan for Intel Arc but requires older Ollama version without Claude Code support.*
+### Model Size Behavior
 
-### Model Size Behavior (Vulkan)
-
-Ollama 0.15+ with Vulkan automatically handles models larger than VRAM:
+llama.cpp's Vulkan backend handles VRAM-overflow gracefully:
 1. **Fits in VRAM** → 100% GPU (fastest)
 2. **Partially fits** → Splits layers between GPU and CPU (slower but works)
 3. **Single layer too large** → Falls back to CPU only
-
-**Workflow:**
-1. Use port 11435 (Vulkan GPU) for most work — fast for small models, auto-splits large ones
-2. Use port 11434 (CPU) when you need guaranteed reliability or GPU is busy
 
 ## Service Files
 
@@ -116,9 +91,31 @@ Service files are in `docs/` directory:
 
 | File | Port | Description |
 |------|------|-------------|
-| [`ollama-cpu.service`](ollama-cpu.service) | 11434 | CPU only, stock Ollama 0.15+ |
-| [`ollama-vulkan.service`](ollama-vulkan.service) | 11435 | Vulkan GPU (Intel Arc), stock Ollama 0.15+ |
-| [`ollama-ipex.service.legacy`](ollama-ipex.service.legacy) | 11434 | IPEX-LLM GPU (legacy, rename to `.service` to use) |
+| [`ollama-cpu.service`](ollama-cpu.service) | 11434 | The service forge depends on. Despite the name, auto-offloads to GPU under Ollama 0.30.x. |
+| [`ollama-vulkan.service`](ollama-vulkan.service) | 11435 | Legacy from the 0.15.x two-service pattern. Keep disabled — the cpu service already does GPU offload on 0.30.x. |
+| [`ollama-ipex.service.legacy`](ollama-ipex.service.legacy) | 11434 | IPEX-LLM GPU path; reference only. Lacks Anthropic API support. |
+
+## Ollama Version Requirements
+
+| Capability | Required version | Evidence |
+|------------|------------------|----------|
+| Anthropic Messages API (`/v1/messages`) | **0.15+** | Required for `forge` agent containers and Claude Code; matrix 1 ran successfully on 0.15.4. |
+| `Gemma 4` 12B chat template | **0.30+** | The pulled variant was unrecognized on 0.15.4 (matrix 2 fell back to Gemma 3); recognized and runs on 0.30.10. |
+| Auto GPU offload (Vulkan, no per-service config) | **0.30+** | On 0.15.x, GPU offload required the separate `ollama-vulkan.service`. On 0.30.x the bundled `llama-server` auto-detects Vulkan and uses it from any service, regardless of `OLLAMA_NUM_GPU` env vars. |
+
+### Current recommendation
+
+Run the latest stable Ollama release on the forge host. The strict minimum is 0.15 (Anthropic API), but every measured improvement we care about — the ~10x speedup from GPU offload, `Gemma 4` availability, and the simpler single-service architecture — lives at 0.30+.
+
+### What changing Ollama version does *not* fix
+
+We tested the hypothesis "newer Ollama's matured chat-template handling unsticks Devstral/Granite's single-turn-narration failure" in matrix 2's post-upgrade retest, and it didn't pan out. Both models fail in the same shape on 0.30.10 as on 0.15.4 — just faster. The constraint there isn't a version-bound template issue; it lives somewhere deeper in Ollama's Anthropic API translation or in how those models emit tool calls natively. See the post-upgrade observations in [`CLAUDE-CODE-LOCAL-MODELS.md`](CLAUDE-CODE-LOCAL-MODELS.md) for details.
+
+### How to check
+
+```bash
+ollama --version
+```
 
 ## Stock `ollama.service` Reactivation After Upgrades
 
@@ -158,36 +155,135 @@ sudo systemctl daemon-reload && \
 sudo systemctl restart ollama-cpu.service
 ```
 
-### Cleaner alternative: upgrade by binary replacement
+### Cleaner alternative: upgrade by tarball extraction
 
-Skip the installer; replace only the binary so the service file is never touched:
+Skip the installer; extract the release tarball directly so the systemd unit files are never touched. Ollama releases ship as `.tar.zst` archives containing `bin/ollama` plus a `lib/ollama/` tree of inference backends — a single-file binary swap is no longer enough.
+
+Find the current release asset URL on the [Ollama GitHub releases page](https://github.com/ollama/ollama/releases) (the linux-amd64 build is `ollama-linux-amd64.tar.zst`; the `-rocm` and `-mlx` variants are for AMD GPUs and Apple Silicon respectively).
 
 ```bash
-sudo systemctl stop ollama-cpu.service
-sudo curl -fL https://ollama.ai/download/ollama-linux-amd64 -o /usr/local/bin/ollama
-sudo chmod +x /usr/local/bin/ollama
+# 1. Download (no sudo needed; ~1.4 GB for v0.30.10)
+mkdir -p ~/tmp/ollama-upgrade && cd ~/tmp/ollama-upgrade
+curl -fL -o ollama-linux-amd64.tar.zst \
+  https://github.com/ollama/ollama/releases/download/v0.30.10/ollama-linux-amd64.tar.zst
+
+# 2. Stop services (do both if you run vulkan as well — they share the binary)
+sudo systemctl stop ollama-cpu.service ollama-vulkan.service
+
+# 3. Back up the old install
+sudo cp /usr/local/bin/ollama /usr/local/bin/ollama.$(ollama --version | awk '{print $NF}')
+sudo mv /usr/local/lib/ollama /usr/local/lib/ollama.$(ollama --version | awk '{print $NF}')
+
+# 4. Extract the new tarball over /usr/local
+sudo tar --zstd -xf ollama-linux-amd64.tar.zst -C /usr/local/
+
+# 5. Confirm and start (only the cpu service — vulkan service is legacy on 0.30.x)
+/usr/local/bin/ollama --version
 sudo systemctl start ollama-cpu.service
+systemctl is-active ollama-cpu
 ```
+
+Why the two backups (binary + lib dir): the lib dir contains inference backends (CUDA variants, CPU microarchitecture variants, libggml-base versioned suffixes). Newer tarballs introduce new files but don't remove old ones — extracting on top leaves stale libs lying around. Moving the old lib dir aside gives a clean install and a one-step rollback (`sudo mv` it back, restore the binary backup).
+
+Disk cost: each `.tar.zst` is ~1.4 GB and each extracted `lib/ollama` is roughly 6 GB (the CUDA libs are the bulk). Keeping the previous version's lib dir around as `lib/ollama.<old-version>/` doubles that until you're confident the new install works and prune the backup.
 
 ### Detecting the problem
 
 `ollama-cpu.service` cycling in `auto-restart` state with `bind: address already in use` in `journalctl -u ollama-cpu` means the stock `ollama.service` is back. [Issue #57](https://github.com/amc-corey-cox/cc_forge/issues/57) (`forge doctor` pre-flight check) will surface this automatically once implemented.
 
+## Post-Upgrade Verification (forge-specific)
+
+After upgrading Ollama, the service-reactivation ritual above gets the daemon running again, but it doesn't confirm that forge itself still works against the new version. These checks are cheap and catch breakage early.
+
+### 1. Confirm the new version
+
+```bash
+ollama --version
+```
+
+Cross-check against the requirements table above.
+
+### 2. Confirm `ollama list` survived the upgrade
+
+```bash
+ollama list
+```
+
+Compare against a snapshot taken before the upgrade (`ollama list > ~/.ollama-list.pre-upgrade.txt`). Ollama major version jumps occasionally rewrite the model-store format; missing entries here mean something to investigate before going further.
+
+### 3. Confirm forge's reach to Ollama
+
+Forge's agent containers reach Ollama via the `forge-ollama-proxy` alias on the `forge-network` docker bridge. The alias is only resolvable from inside containers attached to that network — not from the host OS. Two ways to smoke-test:
+
+```bash
+# From inside a container on forge-network (mirrors what an agent does)
+docker run --rm --network forge-network curlimages/curl:latest \
+    -s http://forge-ollama-proxy:11434/api/tags | head -20
+
+# Or from the host, hitting the daemon directly on localhost
+curl -s http://localhost:11434/api/tags | head -20
+```
+
+A populated JSON model list from either path confirms the upgraded daemon is up. The first path additionally confirms the docker-bridge route forge agents actually use is intact.
+
+### 4. Re-run the matrix 2 pre-flight check
+
+```bash
+cd ~/Code/cc_forge && ./scripts/eval/screening-matrix-2.sh --check
+```
+
+This re-checks `tools` capability for each candidate. Any model that flipped from rejected to accepted (or vice versa) is a finding — record it in the post-upgrade observations section of `docs/CLAUDE-CODE-LOCAL-MODELS.md`.
+
+### 5. Baseline-model probe
+
+Confirm the known-good model still drives Claude Code end-to-end against the full capability suite:
+
+```bash
+RUN_ID="post-upgrade-smoke-$(date -u +%Y%m%dT%H%M%SZ)" \
+MODELS="qwen3-coder-32k" \
+TASKS_DIR=./scripts/eval/tasks \
+OLLAMA_URL="http://forge-ollama-proxy:11434" \
+./scripts/eval/run-matrix.sh
+```
+
+This runs the full 6-task matrix (sanity probe + 5 capability tasks) against `qwen3-coder-32k`. Expected: 5/5 PASS, total wall-clock around 17 minutes on a host with GPU offload available, longer on CPU-only. A timeout or failure here means the upgrade regressed something forge depends on — investigate before letting agents loose.
+
+If you want a faster smoke check before committing to the full suite, point `TASKS_DIR` at a directory containing just one task: `mkdir -p ~/tmp/smoke && ln -sf $(pwd)/scripts/eval/tasks/02-fix-typo ~/tmp/smoke/` then re-run with `TASKS_DIR=~/tmp/smoke`. The matrix runner iterates whatever subdirectories live under `TASKS_DIR`, so a single-task directory gives a single-task run.
+
+### 6. Optional: regression check for non-forge models
+
+If the host runs Ollama for purposes outside cc_forge (e.g., the `vanilj/midnight-miqu-70b-v1.5` and `qwen:72b` workloads), confirm they still respond:
+
+```bash
+ollama run vanilj/midnight-miqu-70b-v1.5 "Reply with just OK."
+ollama run qwen:72b "Reply with just OK."
+```
+
+Major Ollama version jumps occasionally retire support for very old quantization formats or chat templates; a non-trivial response here is the cheapest signal that nothing in the broader Ollama installation regressed.
+
+### 7. Capture findings in `CLAUDE-CODE-LOCAL-MODELS.md`
+
+When the upgrade reveals anything that changes matrix interpretation — newly accepted models, fixed tool-call emission, regressions, etc. — append a "Post-Ollama-upgrade observations" subsection to `docs/CLAUDE-CODE-LOCAL-MODELS.md`. The eval doc is the canonical record of what works against which Ollama version; the setup doc shouldn't accumulate those findings inline.
+
 ## Model Compatibility
 
-| Model | Size | Vulkan (11435) | CPU (11434) | Notes |
-|-------|------|----------------|-------------|-------|
-| llama3.1:latest | 4.7GB | ✅ Full GPU | ✅ Works | Fits in VRAM |
-| qwen2.5-coder:7b | 4.7GB | ✅ Full GPU | ✅ Works | Fits in VRAM |
-| llama3.1:8b-q8 | 8.5GB | ✅ Full GPU | ✅ Works | Fits in VRAM |
-| llama2-uncensored | 3.8GB | ✅ Full GPU | ✅ Works | Fits in VRAM |
-| deepseek-r1:70b | 42GB | ⚠️ GPU+CPU split | ✅ Works | Auto-splits, slower |
-| llama3.3:70b | 57GB | ⚠️ GPU+CPU split | ✅ Works | Auto-splits, slower |
+Under Ollama 0.30.x with the single `ollama-cpu` service, the daemon auto-splits each model between VRAM and CPU RAM based on what fits. The column that mattered on 0.15.x (which port/service to use) no longer applies — there's only one service, and it decides.
 
-**Legend:**
-- ✅ Full GPU = Entire model in VRAM, fastest
-- ⚠️ GPU+CPU split = Partial offload, works but slower (5-30x slower than full GPU)
-- ✅ Works = Reliable but CPU-speed
+| Model | Size | Behavior on 0.30.x | Notes |
+|-------|------|--------------------|-------|
+| llama3.1:latest | 4.7 GB | Full GPU | Fits comfortably in VRAM |
+| qwen2.5-coder:7b | 4.7 GB | Full GPU | Fits comfortably in VRAM |
+| llama3.1:8b-q8 | 8.5 GB | Full GPU | Fits in VRAM |
+| llama2-uncensored | 3.8 GB | Full GPU | Fits comfortably in VRAM |
+| qwen3-coder-32k | 18 GB | GPU+CPU split | Majority of working set in VRAM, rest in RAM (per `ollama ps`) |
+| qwen3-coder-64k | 18 GB | GPU+CPU split | Same model size, larger KV cache pushes more to CPU |
+| deepseek-r1:70b | 42 GB | GPU+CPU split | Most weight in RAM; useful chunk in VRAM |
+| llama3.3:70b | 57 GB | Mostly CPU | Slower; VRAM holds only a small fraction |
+
+**Behavior categories:**
+- **Full GPU** — Entire model in VRAM, fastest
+- **GPU+CPU split** — Partial offload, works at intermediate speed; specifics depend on the model's KV-cache size at the active context window
+- **Mostly CPU** — Working set exceeds VRAM enough that most layers stay on CPU; usable but slower
 
 ## Initial Setup
 
@@ -325,21 +421,25 @@ sudo chown -R ollama:ollama /opt/ipex-llm
 
 ## Known Limitations
 
-1. **Anthropic API + Vulkan crash**: Ollama's `/v1/messages` endpoint crashes with Vulkan backend ([Issue #13949](https://github.com/ollama/ollama/issues/13949)). Use CPU or shim workaround.
-2. **Claude Code large context**: Claude Code sends ~18KB system prompts. Local models process this slowly (60-90s first request).
+1. **Anthropic API + Vulkan crash** *(likely resolved in 0.30.x)*: Ollama's `/v1/messages` endpoint historically crashed with Vulkan backend ([Issue #13949](https://github.com/ollama/ollama/issues/13949)) on 0.15.x. Under 0.30.x, forge's path (Claude Code → `forge-ollama-proxy` → port 11434 → auto-Vulkan-offload llama-server) was observed working cleanly during the post-upgrade verification — no crashes during the qwen3-coder-32k probe or matrix-2 retest. Whether the underlying Ollama bug is properly fixed or our path simply doesn't hit it is unclear. The "use CPU service or shim" workaround documented below is preserved as fallback if the crash reappears.
+2. **Claude Code large context**: Claude Code sends ~18KB system prompts. On 0.15.x this took 60-90s for first request on CPU; on 0.30.x with GPU offload it's faster but still the dominant cost for short tasks. See post-upgrade observations in [`CLAUDE-CODE-LOCAL-MODELS.md`](CLAUDE-CODE-LOCAL-MODELS.md).
 3. **Vulkan slower than IPEX**: Vulkan backend is slower than IPEX-LLM, but IPEX is stuck on older Ollama without Anthropic API support.
-4. **Partial offload performance**: When models split between GPU+CPU, performance drops 5-30x vs full GPU.
-5. **SYCL support pending**: Native SYCL/oneAPI support for Intel Arc is [in PR #11160](https://github.com/ollama/ollama/pull/11160), not yet merged.
+4. **Partial offload performance**: When models split between GPU+CPU, performance drops vs full GPU. Empirically (qwen3-coder-32k on the forge host's GPU class): the share of inference on GPU roughly tracks the share of weights that fit in VRAM — a meaningful speed bump but not full-GPU speed.
+5. **`OLLAMA_NUM_GPU=0` no longer honored**: The env var that the legacy `ollama-cpu.service` set to keep its service CPU-only is silently ignored by 0.30.x's llama-server backend. Auto-offload to GPU happens regardless. No known clean way to genuinely disable GPU offload at the service level on 0.30.x.
+6. **SYCL support pending**: Native SYCL/oneAPI support for Intel Arc is [in PR #11160](https://github.com/ollama/ollama/pull/11160), not yet merged at time of writing.
 
 ## Files and Locations
 
 | Path | Purpose |
 |------|---------|
-| `/etc/systemd/system/ollama-cpu.service` | CPU service, port 11434 |
-| `/etc/systemd/system/ollama-vulkan.service` | Vulkan GPU service, port 11435 |
-| `/etc/systemd/system/ollama.service` | Original stock Ollama (preserved as baseline) |
-| `/usr/local/bin/ollama` | Stock Ollama binary (0.15+) |
-| `/usr/share/ollama/.ollama/models/` | Downloaded models (shared by all services) |
+| `/etc/systemd/system/ollama-cpu.service` | The active service forge uses (port 11434) — name is historical; under 0.30.x it auto-offloads to GPU. |
+| `/etc/systemd/system/ollama-vulkan.service` | Legacy unit from the 0.15.x two-service pattern; keep disabled on 0.30.x. |
+| `/etc/systemd/system/ollama.service[.bak]` | Stock unit; renamed `.bak` after the reactivation ritual. |
+| `/usr/local/bin/ollama` | Ollama binary. |
+| `/usr/local/bin/ollama.<old-version>` | Binary backup from the last `ollama` upgrade (created by the tarball-extraction procedure above). Safe to delete once the new version is confirmed working. |
+| `/usr/local/lib/ollama/` | Ollama inference backends (CPU microarchitecture variants, `vulkan/`, `cuda_v12/`, `cuda_v13/`). Multi-file install since 0.16-ish. |
+| `/usr/local/lib/ollama.<old-version>/` | Lib-dir backup from the last upgrade. Same disposition as the binary backup. |
+| `/usr/share/ollama/.ollama/models/` | Downloaded model blobs (shared across services and ollama users). |
 
 ## Cleanup (Optional)
 
@@ -365,12 +465,15 @@ Ollama 0.15+ supports the Anthropic Messages API, enabling Claude Code with loca
 
 ### Known Issue: Vulkan + Anthropic API
 
-**Bug**: Ollama's Anthropic API (`/v1/messages`) crashes when used with Vulkan GPU backend. See [Issue #13949](https://github.com/ollama/ollama/issues/13949).
+**Bug** (on Ollama 0.15.x): Ollama's Anthropic API (`/v1/messages`) crashed when used with the Vulkan GPU backend. See [Issue #13949](https://github.com/ollama/ollama/issues/13949).
 
 | Backend | Direct Ollama API | Anthropic API (Claude Code) |
 |---------|-------------------|----------------------------|
-| CPU (11434) | ✅ Works | ✅ Works |
-| Vulkan GPU (11435) | ✅ Works | ❌ Crashes |
+| CPU (11434) on 0.15.x | ✅ Works | ✅ Works |
+| Vulkan GPU (11435) on 0.15.x | ✅ Works | ❌ Crashes |
+| `ollama-cpu` on 0.30.x (auto-offloads to Vulkan) | ✅ Works | ✅ **Observed working** during the post-upgrade verification |
+
+The 0.30.x observation suggests either the underlying bug is fixed or the new llama-server's Anthropic-API path takes a different route. The workarounds below are preserved for anyone still on 0.15.x or in case the crash reappears.
 
 ### Option 1: Use CPU Service (Simple)
 
