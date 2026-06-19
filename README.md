@@ -133,7 +133,3 @@ See [ROADMAP.md](ROADMAP.md) for the full plan.
 the copyleft just keeps derivatives — including hosted/SaaS modifications — open.
 The open release will always remain available under AGPL-3.0. Contributions are
 accepted under the DCO — see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-TBD
