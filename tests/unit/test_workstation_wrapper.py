@@ -100,6 +100,21 @@ def test_syncs_then_invokes_remote_run(shim_bin, tmp_path):
     assert "session ended" in proc.stderr
 
 
+def test_bare_run_passes_no_phantom_empty_arg(shim_bin, tmp_path):
+    # A plain `forge run` (no extra args) must NOT append a stray '' — the
+    # server-side Click rejects it as "Got unexpected extra argument ()".
+    proc, log = run_wrapper(shim_bin, tmp_path, ["run"])
+    run_line = next(l for l in log.splitlines() if "forge run --repo" in l)
+    assert "''" not in run_line
+
+
+def test_bare_passthrough_passes_no_phantom_empty_arg(shim_bin, tmp_path):
+    # Same guard on the passthrough path (e.g. a no-arg `forge status`).
+    proc, log = run_wrapper(shim_bin, tmp_path, ["status"])
+    status_line = next(l for l in log.splitlines() if "forge status" in l)
+    assert "''" not in status_line
+
+
 def test_adds_forgejo_remote_when_absent(shim_bin, tmp_path):
     proc, log = run_wrapper(shim_bin, tmp_path, ["run"])  # GIT_HAS_REMOTE unset
     assert "remote add forgejo http://tesseract:3000/cc_forge_admin/myrepo.git" in log
