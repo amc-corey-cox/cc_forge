@@ -1,5 +1,10 @@
 # Intel Arc GPU Model Deployment
 
+> **Exploration notes — not the current shipping path.** forge's default agent is Claude
+> Code with the local model `qwen3-coder-32k` (CPU; the current default).
+> For current local-model guidance see [CLAUDE-CODE-LOCAL-MODELS.md](CLAUDE-CODE-LOCAL-MODELS.md);
+> GPU acceleration is tracked in #27.
+
 ## Overview
 
 This guide covers deploying LLMs on Intel Arc GPUs using IPEX-LLM. Intel Arc is CC Forge's Tier 1 hardware for fast local inference.

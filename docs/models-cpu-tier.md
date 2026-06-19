@@ -1,5 +1,9 @@
 # CPU Tier Model Deployment
 
+> **Exploration notes — not the current default.** forge's current default local model is
+> `qwen3-coder-32k`. For current local-model guidance see
+> [CLAUDE-CODE-LOCAL-MODELS.md](CLAUDE-CODE-LOCAL-MODELS.md).
+
 ## Overview
 
 When models don't fit on GPU (Tier 1), CPU inference is the fallback. It's slow but capable—you can run 70B+ parameter models on sufficient RAM.

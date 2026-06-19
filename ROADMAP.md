@@ -16,20 +16,26 @@
 - [x] Unit tests for git and Forgejo modules
 
 ### Agent Session Quality — In Progress
-- [ ] Claude Code pass-through mode (`--claude`) for using a Max/API account from containers (#34)
-- [ ] Container CLAUDE.md so the agent knows its environment (#30)
-- [ ] `gh` CLI shim for Forgejo API in agent containers (#32)
+- [x] Claude Code pass-through mode (`--claude`) for using a Max/API account from containers (#34)
+- [x] Container CLAUDE.md so the agent knows its environment (#30)
+- [x] `gh` CLI shim for Forgejo API in agent containers (#32)
 - [ ] GPU Ollama proxy for faster local model sessions (#27)
 - [ ] Context window optimization for local models (#28)
 
 ### CI & Testing
-- [ ] GitHub Actions CI: pytest on push/PR (#35)
+- [x] GitHub Actions CI: pytest on push/PR (#35)
 - [ ] End-to-end testing on real repos
 - [ ] Integration test for socat proxy connectivity (#33)
 
 ### Remaining
 - [ ] First-time Forgejo setup documentation
 - [ ] Model config naming cleanup (`FORGE_CLAUDE_MODEL` → `FORGE_AGENT_MODEL`)
+
+### Shipped since 2026-02-20 (not originally itemized)
+- [x] `forge promote` — carry a reviewed Forgejo PR to GitHub (monolith + workstation/server split, #48/#60)
+- [x] Agent workframe: harness-agnostic `docker/AGENTS.md` + `/self-review` and `/complexity-audit` commands, injected for every agent (#55)
+- [x] Container hardening: per-container memory/PID limits + GitHub token isolation (#47)
+- [x] Eval task suite (`scripts/eval/tasks/01–07`) + local-model screening matrices
 
 ## Phase 2: Polish & Robustness
 
@@ -91,4 +97,4 @@
 
 ---
 
-*Last updated: 2026-02-20 — Added agent session quality, CI, pass-through mode, session history*
+*Last updated: 2026-06-18 — Checked off shipped items; recorded promote, workframe, hardening, and the eval suite*

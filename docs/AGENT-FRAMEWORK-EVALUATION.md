@@ -6,7 +6,14 @@ Evaluation of AI coding assistant frameworks for cc_forge's local-first MVP.
 
 ## Executive Summary
 
-**Recommendation: Aider** as the primary framework for cc_forge's local-first MVP.
+> **Status (2026-06): Claude Code is cc_forge's shipped default agent** — run against
+> local Ollama (default model `qwen3-coder-32k`), or the Anthropic API via
+> `forge run --claude`. Aider is a supported, first-class alternative
+> (`forge run --agent aider`) and an active line of exploration — especially for the
+> multi-agent teams and for models where a diff-based workflow beats Claude Code's. Treat
+> the comparison below as living input to a planned larger agent eval, not a settled verdict.
+
+**Original local-first-MVP recommendation: Aider**, for its reliable diff-based editing with local models.
 
 After hands-on testing, Goose's MCP architecture—while promising for future extensibility—has fundamental issues with local Ollama models. Tool calling fails consistently across multiple models tested. Aider's diff-based editing approach works reliably with local models, making it the practical choice for now.
 
