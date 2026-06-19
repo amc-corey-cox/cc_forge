@@ -129,4 +129,7 @@ See [ROADMAP.md](ROADMAP.md) for the full plan.
 
 ## License
 
-TBD
+[AGPL-3.0-or-later](LICENSE). Commercial use, hosting, and support are welcome;
+the copyleft just keeps derivatives — including hosted/SaaS modifications — open.
+The open release will always remain available under AGPL-3.0. Contributions are
+accepted under the DCO — see [CONTRIBUTING.md](CONTRIBUTING.md).
