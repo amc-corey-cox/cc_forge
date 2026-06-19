@@ -22,7 +22,8 @@ being reckless. Be precise about what that buys you — over-trusting it is the 
   can't read your SSH keys, reach files outside its workspace, or `rm -rf` your machine.
   It only ever sees a clone pulled from Forgejo.
 - **A review gate.** All its work lands as commits on a Forgejo PR; nothing reaches your
-  real repo until *you* promote it. A confused agent can't push junk to your upstream.
+  real repo until *you* promote it. The agent has no GitHub remote and isn't handed your
+  credentials, so it won't reach your upstream on its own.
 - Non-root container user, plus memory/PID limits.
 
 **What it does *not* give you (yet):**
@@ -35,8 +36,12 @@ being reckless. Be precise about what that buys you — over-trusting it is the 
 In short: the isolation makes dangerous mode **safe against accidents and bad commits** —
 an agent going off the rails can't wreck your host or your upstream — but **not** against a
 *determined adversary* who controls the agent. Treat it as a guardrail for
-trusted-but-fallible agents, not a sandbox for hostile code. See
-[DESIGN.md](DESIGN.md) for the full model and the egress-control options under consideration.
+trusted-but-fallible agents, not a sandbox for hostile code. (One nuance: forge never
+hands the agent your GitHub credentials — any configured `FORGE_GITHUB_TOKEN` sits in a
+shim-only `0600` file and GitHub access goes through the controlled `gh` shim — but since
+the network is open, scope that token read-only so even a determined agent can't do much
+with it.) See [DESIGN.md](DESIGN.md) for the full model and the egress-control options
+under consideration.
 
 ## Quick Start
 
