@@ -73,20 +73,19 @@ docker logs -f <container_name>
 docker system prune
 ```
 
-## Architecture Notes
+## How forge uses Docker
 
-Docker is used for the CC Forge agent system:
-
-- **Agent containers**: Isolated environments for dev/test/review agents
-- **Full network access**: Agents can access Ollama, GitHub, and external resources
-- **Scoped GitHub tokens**: Agents have limited permissions (create PRs, no admin)
-- **Branch protection**: Agents cannot push directly to main
-
-See [Issue #4](https://github.com/amc-corey-cox/cc_forge/issues/4) for the agent architecture design.
+This doc covers installing Docker itself. For how forge *uses* it — the agent
+container, the Forgejo + Ollama-proxy services, and the safety model — see
+[DESIGN.md](../DESIGN.md) and [docker/README.md](../docker/README.md). In short: the
+agent runs in an isolated container that clones from Forgejo, with **no host mount and
+no GitHub credentials handed to it**; reviewed work reaches GitHub only via
+`forge promote`, run on the host.
 
 ## Security Considerations
 
-- Users in the `docker` group effectively have root-equivalent access
-- Only add trusted users to the docker group
-- Containers protect the host system from agent actions
-- GitHub branch protection prevents direct pushes to main
+- Users in the `docker` group effectively have root-equivalent access on the host — only
+  add trusted users to it.
+- The agent container has no host filesystem mount and isn't handed GitHub credentials.
+  See [DESIGN.md](../DESIGN.md) for the full safety model and its limits — notably, there
+  is no network egress control yet.

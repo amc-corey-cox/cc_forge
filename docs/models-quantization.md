@@ -243,4 +243,4 @@ Quantization impact varies by model and task. Test on your actual use cases.
 
 - Intel Arc guide: `models-intel-arc.md`
 - CPU tier guide: `models-cpu-tier.md`
-- Model selection: `/knowledge/topics/models/_selection-guide.md`
+- Model selection: [CLAUDE-CODE-LOCAL-MODELS.md](CLAUDE-CODE-LOCAL-MODELS.md)
