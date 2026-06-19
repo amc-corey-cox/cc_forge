@@ -1,10 +1,10 @@
 # Local Server Ollama Configuration
 
-This documents the Ollama setup on a local home server with Intel Arc GPU.
+This documents the Ollama setup on a local home server with a Vulkan-capable consumer GPU.
 
 ## Service Architecture
 
-A single Ollama service is sufficient on 0.30.x. The Ollama daemon's bundled `llama.cpp` runtime auto-detects the GPU (Vulkan for Intel Arc) and offloads what fits to VRAM, with the rest staying on CPU. There's nothing to configure per service — the same daemon transparently does what the two-service pattern on 0.15.x had to be told explicitly.
+A single Ollama service is sufficient on 0.30.x. The Ollama daemon's bundled `llama.cpp` runtime auto-detects a Vulkan-compatible GPU when present and offloads what fits to VRAM, with the rest staying on CPU. There's nothing to configure per service — the same daemon transparently does what the two-service pattern on 0.15.x had to be told explicitly.
 
 ```
 /etc/systemd/system/
@@ -42,7 +42,7 @@ curl http://localhost:11434/api/tags | head -5
 
 # Sanity-check GPU offload (under 0.30.x, expect a CPU/GPU split)
 ollama run qwen3-coder-32k "Reply with OK."
-ollama ps   # PROCESSOR column should show e.g. "37%/63% CPU/GPU"
+ollama ps   # PROCESSOR column should show a CPU/GPU split, not 100% CPU
 ```
 
 ### Using the service
@@ -60,7 +60,7 @@ ANTHROPIC_BASE_URL=http://localhost:11434 claude --model qwen3-coder-32k
 
 ## Recommendations
 
-`ollama-cpu` handles all model sizes. The daemon auto-splits the model between VRAM and CPU RAM based on what fits, so the only practical constraint is whether a model loads at all (and how fast it runs once loaded). For the forge host's Intel Arc A770 (16 GB VRAM):
+`ollama-cpu` handles all model sizes. The daemon auto-splits the model between VRAM and CPU RAM based on what fits, so the only practical constraint is whether a model loads at all (and how fast it runs once loaded). For a consumer-class GPU with a moderate VRAM budget (the forge host's class):
 
 | Model size | Behavior on 0.30.x | Notes |
 |------------|--------------------|-------|
@@ -97,27 +97,25 @@ Service files are in `docs/` directory:
 
 ## Ollama Version Requirements
 
-cc_forge depends on three things from Ollama: the Anthropic Messages API endpoint, working tool-call handling, and chat-template support for the model families in the eval shortlist. Each one effectively pins a minimum version.
-
-| Capability | Minimum Ollama version | Source |
-|------------|------------------------|--------|
-| Anthropic Messages API (`/v1/messages`) | 0.15 | Required for `forge` agent containers and Claude Code |
-| Tool-call template handling for current open-weight families (Mistral, Granite, OLMo, Gemma 3+) | recent (0.20+ recommended) | Older Ollama can parse some templates but emit tool calls incorrectly — observed as "model declares `tools` but never issues one" in screening matrix 2 |
-| `Gemma 4` 12B chat template | 0.20+ (varies by release) | Anything older falls back to Gemma 3 |
+| Capability | Required version | Evidence |
+|------------|------------------|----------|
+| Anthropic Messages API (`/v1/messages`) | **0.15+** | Required for `forge` agent containers and Claude Code; matrix 1 ran successfully on 0.15.4. |
+| `Gemma 4` 12B chat template | **0.30+** | The pulled variant was unrecognized on 0.15.4 (matrix 2 fell back to Gemma 3); recognized and runs on 0.30.10. |
+| Auto GPU offload (Vulkan, no per-service config) | **0.30+** | On 0.15.x, GPU offload required the separate `ollama-vulkan.service`. On 0.30.x the bundled `llama-server` auto-detects Vulkan and uses it from any service, regardless of `OLLAMA_NUM_GPU` env vars. |
 
 ### Current recommendation
 
-Run the latest stable Ollama release on the forge host. The minimum is 0.15 (Anthropic API), but a meaningful chunk of the open-weight ecosystem's tool-calling reliability lives behind the 0.20+ template improvements. Sticking on 0.15 leaves a class of model failures that look like model-capability problems but are actually template-version problems.
+Run the latest stable Ollama release on the forge host. The strict minimum is 0.15 (Anthropic API), but every measured improvement we care about — the ~10x speedup from GPU offload, `Gemma 4` availability, and the simpler single-service architecture — lives at 0.30+.
+
+### What changing Ollama version does *not* fix
+
+We tested the hypothesis "newer Ollama's matured chat-template handling unsticks Devstral/Granite's single-turn-narration failure" in matrix 2's post-upgrade retest, and it didn't pan out. Both models fail in the same shape on 0.30.10 as on 0.15.4 — just faster. The constraint there isn't a version-bound template issue; it lives somewhere deeper in Ollama's Anthropic API translation or in how those models emit tool calls natively. See the post-upgrade observations in [`CLAUDE-CODE-LOCAL-MODELS.md`](CLAUDE-CODE-LOCAL-MODELS.md) for details.
 
 ### How to check
 
 ```bash
 ollama --version
 ```
-
-### Why this matters for the eval matrices
-
-Screening matrix 2 ran with Ollama 0.15.4 and surfaced Devstral 24B and Granite 4.1 8B failing in a "polite acknowledgment with no tool call" pattern — exactly the shape of failure a stale chat template produces. The matrix 2 result table in `docs/CLAUDE-CODE-LOCAL-MODELS.md` is therefore configuration-bound, not model-capability-bound for those two candidates. Re-running on a current Ollama is the cheapest way to distinguish which failure category they actually belong to. See [the matrix 2 interpretation section](CLAUDE-CODE-LOCAL-MODELS.md#interpretation) for context.
 
 ## Stock `ollama.service` Reactivation After Upgrades
 
@@ -234,7 +232,7 @@ This re-checks `tools` capability for each candidate. Any model that flipped fro
 
 ### 5. Baseline-model probe
 
-Confirm the known-good model still drives Claude Code end-to-end. The cheapest probe is the same `02-fix-typo` task used in matrix runs:
+Confirm the known-good model still drives Claude Code end-to-end against the full capability suite:
 
 ```bash
 RUN_ID="post-upgrade-smoke-$(date -u +%Y%m%dT%H%M%SZ)" \
@@ -244,7 +242,9 @@ OLLAMA_URL="http://forge-ollama-proxy:11434" \
 ./scripts/eval/run-matrix.sh
 ```
 
-Expected: a single PASS on `02-fix-typo` within ~30 min on CPU (first call) or seconds (if the model is warm). A timeout or failure here means the upgrade regressed something forge depends on — investigate before letting agents loose.
+This runs the full 6-task matrix (sanity probe + 5 capability tasks) against `qwen3-coder-32k`. Expected: 5/5 PASS, total wall-clock around 17 minutes on a host with GPU offload available, longer on CPU-only. A timeout or failure here means the upgrade regressed something forge depends on — investigate before letting agents loose.
+
+If you want a faster smoke check before committing to the full suite, point `TASKS_DIR` at a directory containing just one task: `mkdir -p ~/tmp/smoke && ln -sf $(pwd)/scripts/eval/tasks/02-fix-typo ~/tmp/smoke/` then re-run with `TASKS_DIR=~/tmp/smoke`. The matrix runner iterates whatever subdirectories live under `TASKS_DIR`, so a single-task directory gives a single-task run.
 
 ### 6. Optional: regression check for non-forge models
 
@@ -271,7 +271,7 @@ Under Ollama 0.30.x with the single `ollama-cpu` service, the daemon auto-splits
 | qwen2.5-coder:7b | 4.7 GB | Full GPU | Fits comfortably in VRAM |
 | llama3.1:8b-q8 | 8.5 GB | Full GPU | Fits in VRAM |
 | llama2-uncensored | 3.8 GB | Full GPU | Fits comfortably in VRAM |
-| qwen3-coder-32k | 18 GB | GPU+CPU split | ~13.3 GB in VRAM, rest in RAM (observed ~63% GPU per `ollama ps`) |
+| qwen3-coder-32k | 18 GB | GPU+CPU split | Majority of working set in VRAM, rest in RAM (per `ollama ps`) |
 | qwen3-coder-64k | 18 GB | GPU+CPU split | Same model size, larger KV cache pushes more to CPU |
 | deepseek-r1:70b | 42 GB | GPU+CPU split | Most weight in RAM; useful chunk in VRAM |
 | llama3.3:70b | 57 GB | Mostly CPU | Slower; VRAM holds only a small fraction |
@@ -420,7 +420,7 @@ sudo chown -R ollama:ollama /opt/ipex-llm
 1. **Anthropic API + Vulkan crash** *(likely resolved in 0.30.x)*: Ollama's `/v1/messages` endpoint historically crashed with Vulkan backend ([Issue #13949](https://github.com/ollama/ollama/issues/13949)) on 0.15.x. Under 0.30.x, forge's path (Claude Code → `forge-ollama-proxy` → port 11434 → auto-Vulkan-offload llama-server) was observed working cleanly during the post-upgrade verification — no crashes during the qwen3-coder-32k probe or matrix-2 retest. Whether the underlying Ollama bug is properly fixed or our path simply doesn't hit it is unclear. The "use CPU service or shim" workaround documented below is preserved as fallback if the crash reappears.
 2. **Claude Code large context**: Claude Code sends ~18KB system prompts. On 0.15.x this took 60-90s for first request on CPU; on 0.30.x with GPU offload it's faster but still the dominant cost for short tasks. See post-upgrade observations in [`CLAUDE-CODE-LOCAL-MODELS.md`](CLAUDE-CODE-LOCAL-MODELS.md).
 3. **Vulkan slower than IPEX**: Vulkan backend is slower than IPEX-LLM, but IPEX is stuck on older Ollama without Anthropic API support.
-4. **Partial offload performance**: When models split between GPU+CPU, performance drops vs full GPU. Empirically (qwen3 on Arc A770): ~63% of work on GPU when ~60% of weight fits in VRAM — a meaningful speed bump but not full-GPU speed.
+4. **Partial offload performance**: When models split between GPU+CPU, performance drops vs full GPU. Empirically (qwen3-coder-32k on the forge host's GPU class): the share of inference on GPU roughly tracks the share of weights that fit in VRAM — a meaningful speed bump but not full-GPU speed.
 5. **`OLLAMA_NUM_GPU=0` no longer honored**: The env var that the legacy `ollama-cpu.service` set to keep its service CPU-only is silently ignored by 0.30.x's llama-server backend. Auto-offload to GPU happens regardless. No known clean way to genuinely disable GPU offload at the service level on 0.30.x.
 6. **SYCL support pending**: Native SYCL/oneAPI support for Intel Arc is [in PR #11160](https://github.com/ollama/ollama/pull/11160), not yet merged at time of writing.
 
