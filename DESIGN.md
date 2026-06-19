@@ -2,7 +2,7 @@
 
 ## Project Vision
 
-CC Forge is a CLI tool that gives you a safe, containerized AI agent session for any git repository. Type `forge` in a repo and get an interactive Claude Code session backed by local Ollama, with all changes going through a local Forgejo instance as a review gate.
+CC Forge is a CLI tool that gives you a safe, containerized AI agent session for any git repository. Type `forge` in a repo and get an interactive Claude Code session backed by local Ollama, with all changes going through a local Forgejo instance as a review gate before you promote approved work to GitHub.
 
 The agent can never touch your real repos or host filesystem.
 
@@ -11,7 +11,7 @@ The agent can never touch your real repos or host filesystem.
 1. **Local-First**: All execution on local hardware with local models. No cloud dependencies.
 2. **Safe by Default**: Agents clone from Forgejo, not bind-mounted. This is the safety boundary.
 3. **Simple to Use**: One command (`forge`) does everything — starts infrastructure, syncs to Forgejo, launches agent.
-4. **Transparent**: All agent work lands in Forgejo as commits/PRs. Review before pulling to your real repo.
+4. **Transparent**: All agent work lands in Forgejo as commits/PRs. Review there, then `forge promote` approved work to GitHub.
 
 ---
 
@@ -41,7 +41,7 @@ User types `forge` in a git repo
          User reviews in Forgejo web UI (localhost:3000)
               │
               ▼
-         Approved work pulled to real repo / pushed to GitHub
+         Approved work promoted to GitHub via `forge promote`
 ```
 
 ### Safety Model
@@ -53,6 +53,8 @@ The key security boundary is **no host mount**. The agent container:
 - Reaches Forgejo and Ollama via network proxies
 - Has no access to host filesystem or host mounts
 - All output is visible as git commits in Forgejo
+- Holds no GitHub credentials — it reaches Forgejo but never GitHub; promotion to GitHub runs on the host with your own `gh` auth
+- Runs as a non-root user, under per-container memory and PID limits
 
 ### Network Access: Intent vs. Current State
 
@@ -128,8 +130,8 @@ Built from `docker/Dockerfile.agent`:
 1. `forge` pushes your current branch to Forgejo
 2. Agent works in a container, commits and pushes to Forgejo
 3. You review changes in the Forgejo web UI (localhost:3000)
-4. Approved changes: `git pull forgejo <branch>` to your real repo
-5. Push to GitHub/upstream as usual
+4. Promote approved work to GitHub: `forge promote <pr>` (pushes the branch and opens a GitHub PR)
+5. Review and merge the GitHub PR as usual
 
 ---
 
@@ -142,4 +144,4 @@ Built from `docker/Dockerfile.agent`:
 
 ---
 
-*Last updated: 2026-02-10 — Restructured for forge CLI architecture*
+*Last updated: 2026-06-18 — Factual update: the GitHub promote hop and shipped hardening (token isolation, resource limits)*

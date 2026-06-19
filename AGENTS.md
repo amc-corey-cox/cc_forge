@@ -84,7 +84,8 @@ cc_forge/
 │       ├── git.py              # Git operations (subprocess)
 │       ├── forgejo.py          # Forgejo API client (httpx)
 │       ├── docker.py           # Container lifecycle (Docker SDK)
-│       └── session.py          # Session orchestration
+│       ├── session.py          # Session orchestration
+│       └── promote.py          # Forgejo PR → GitHub PR
 ├── tests/
 │   ├── unit/                   # Unit tests (mocked dependencies)
 │   └── integration/            # Integration tests (real Docker/Forgejo)
@@ -92,10 +93,15 @@ cc_forge/
 │   ├── docker-compose.yml      # Forgejo + Ollama proxies
 │   ├── Dockerfile.agent        # Agent container image
 │   ├── entrypoint.sh           # Clone + start agent
+│   ├── gh-shim.sh              # gh shim (PRs→Forgejo, issues→GitHub)
+│   ├── AGENTS.md               # In-container agent guide (CLAUDE.md symlinks here)
+│   ├── commands/               # /self-review, /complexity-audit
 │   └── README.md               # Docker stack documentation
 ├── archive/                    # Historical reference
 ├── docs/                       # Operational documentation
-├── scripts/                    # Utility scripts
+├── scripts/
+│   ├── eval/                   # Local-model screening tasks + harness
+│   └── remote-forge/           # Workstation/server install + wrappers
 └── .github/
     └── copilot-instructions.md
 ```
@@ -180,4 +186,4 @@ This document should evolve as the project evolves. If you identify missing guid
 
 ---
 
-*Last updated: 2026-02-10 — Updated for forge CLI architecture*
+*Last updated: 2026-06-18 — Refreshed project structure (promote, workframe, eval, remote-forge)*
