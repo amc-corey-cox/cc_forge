@@ -11,6 +11,38 @@ Type `forge` in any git repository to get an interactive AI coding session where
 - You review and approve work before pulling it to your real repo
 - Everything runs on local hardware via Ollama — no cloud APIs needed
 
+## What it protects against — and what it doesn't
+
+forge exists to let an agent run with `--dangerously-skip-permissions` without that
+being reckless. Be precise about what that buys you — over-trusting it is the real risk.
+
+**What the isolation gives you (Phase 1):**
+
+- **No host filesystem access.** The agent runs in a container with no host mount — it
+  can't read your SSH keys, reach files outside its workspace, or `rm -rf` your machine.
+  It only ever sees a clone pulled from Forgejo.
+- **A review gate.** All its work lands as commits on a Forgejo PR; nothing reaches your
+  real repo until *you* promote it. The agent has no GitHub remote and isn't handed your
+  credentials, so it won't reach your upstream on its own.
+- Non-root container user, plus memory/PID limits.
+
+**What it does *not* give you (yet):**
+
+- **No network egress control.** The container can reach the whole internet. A malicious
+  or prompt-injected agent in dangerous mode can still exfiltrate your repo, call external
+  APIs, or download and run arbitrary code. Network lockdown is on the roadmap (Phase 2+),
+  not in v0.1.0.
+
+In short: the isolation makes dangerous mode **safe against accidents and bad commits** —
+an agent going off the rails can't wreck your host or your upstream — but **not** against a
+*determined adversary* who controls the agent. Treat it as a guardrail for
+trusted-but-fallible agents, not a sandbox for hostile code. (One nuance: forge never
+hands the agent your GitHub credentials — any configured `FORGE_GITHUB_TOKEN` sits in a
+shim-only `0600` file and GitHub access goes through the controlled `gh` shim — but since
+the network is open, scope that token read-only so even a determined agent can't do much
+with it.) See [DESIGN.md](DESIGN.md) for the full model and the egress-control options
+under consideration.
+
 ## Quick Start
 
 ### Prerequisites
@@ -115,6 +147,7 @@ See [docs/FORGE-USAGE.md](docs/FORGE-USAGE.md) for the detailed walkthrough.
 ## Documentation
 
 - [docs/FORGE-USAGE.md](docs/FORGE-USAGE.md) — Running a session end-to-end
+- [docs/WORKSTATION-SETUP.md](docs/WORKSTATION-SETUP.md) — Running forge against a remote server
 - [DESIGN.md](DESIGN.md) — Architecture and safety model
 - [ROADMAP.md](ROADMAP.md) — Implementation phases
 - [AGENTS.md](AGENTS.md) — Instructions for AI agents working in this repo
@@ -122,10 +155,13 @@ See [docs/FORGE-USAGE.md](docs/FORGE-USAGE.md) for the detailed walkthrough.
 
 ## Status
 
-Phase 1 — the human-driven single-issue loop. An agent takes a task, works in
-isolation, self-reviews, and hands back a promotable PR.
+**v0.1.0 — Phase 1 (proof of concept).** The human-driven single-issue loop: an agent
+takes a task, works in isolation, self-reviews, and hands back a promotable PR. Validated
+end-to-end, but exercised primarily on the maintainer's own setup — expect rough edges on
+first adoption.
 
-See [ROADMAP.md](ROADMAP.md) for the full plan.
+Not yet in v0.1.0: network egress control (see "What it protects against" above),
+headless/batch runs, and automated multi-agent review. See [ROADMAP.md](ROADMAP.md).
 
 ## License
 
