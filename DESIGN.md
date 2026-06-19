@@ -53,7 +53,7 @@ The key security boundary is **no host mount**. The agent container:
 - Reaches Forgejo and Ollama via network proxies
 - Has no access to host filesystem or host mounts
 - All output is visible as git commits in Forgejo
-- Holds no GitHub credentials — it reaches Forgejo but never GitHub; promotion to GitHub runs on the host with your own `gh` auth
+- Isn't handed GitHub credentials — GitHub access is mediated by the `gh` shim, and promotion runs on the host with your own `gh` auth. (A configured `FORGE_GITHUB_TOKEN` for the agent's issue reads is written to a `0600` shim-only file, never an env var; with no egress control a determined agent could still locate it, so scope it read-only.)
 - Runs as a non-root user, under per-container memory and PID limits
 
 ### Network Access: Intent vs. Current State
