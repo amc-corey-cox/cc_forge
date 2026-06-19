@@ -17,9 +17,9 @@ The IPEX-LLM legacy path (`ollama-ipex.service.legacy`) is provided in this repo
 
 **Why `ollama-cpu` despite the name?** The name is historical. On 0.15.x it really did mean CPU-only — the service file set `OLLAMA_NUM_GPU=0`. On 0.30.x that env var is silently ignored by `llama-server`, so the service is now actually CPU+GPU. The name stayed because forge has hard-coded the port (11434) into a lot of places; renaming the unit would create more churn than it saves. Treat the name as "the service forge depends on," not as a backend constraint.
 
-**Why `ollama-vulkan` is now redundant.** The original purpose was to provide a Vulkan-accelerated path on a separate port (11435) for clients that wanted GPU. With auto-detection in 0.30.x, the port-11434 service already offers that. Two services running simultaneously means two daemons competing for the same 16 GB of Arc VRAM — a real OOM risk if both load models. Disable it: `sudo systemctl disable --now ollama-vulkan.service`.
+**Why `ollama-vulkan` is now redundant.** The original purpose was to provide a Vulkan-accelerated path on a separate port (11435) for clients that wanted GPU. With auto-detection in 0.30.x, the port-11434 service already offers that. Two services running simultaneously means two daemons competing for the same finite VRAM — a real OOM risk if both load models. Disable it: `sudo systemctl disable --now ollama-vulkan.service`.
 
-**Port:** `0.0.0.0:11434` (bound for docker-bridge reach from forge agent containers). See [Network Access](#network-access) for the security implications.
+**Port:** In this setup the service is configured to bind `0.0.0.0:11434` so forge's agent containers can reach it across the docker bridge. (Ollama's stock default is `127.0.0.1:11434` — localhost-only. See [Network Access](#network-access) for why we change it and the firewall implications.)
 
 ## Quick Reference
 
@@ -177,10 +177,10 @@ sudo mv /usr/local/lib/ollama /usr/local/lib/ollama.$(ollama --version | awk '{p
 # 4. Extract the new tarball over /usr/local
 sudo tar --zstd -xf ollama-linux-amd64.tar.zst -C /usr/local/
 
-# 5. Confirm and start
+# 5. Confirm and start (only the cpu service — vulkan service is legacy on 0.30.x)
 /usr/local/bin/ollama --version
-sudo systemctl start ollama-cpu.service ollama-vulkan.service
-systemctl is-active ollama-cpu ollama-vulkan
+sudo systemctl start ollama-cpu.service
+systemctl is-active ollama-cpu
 ```
 
 Why the two backups (binary + lib dir): the lib dir contains inference backends (CUDA variants, CPU microarchitecture variants, libggml-base versioned suffixes). Newer tarballs introduce new files but don't remove old ones — extracting on top leaves stale libs lying around. Moving the old lib dir aside gives a clean install and a one-step rollback (`sudo mv` it back, restore the binary backup).
@@ -213,14 +213,18 @@ Compare against a snapshot taken before the upgrade (`ollama list > ~/.ollama-li
 
 ### 3. Confirm forge's reach to Ollama
 
-From the forge host, the agent containers reach Ollama via the `forge-ollama-proxy` bridge. Smoke-test the bridge:
+Forge's agent containers reach Ollama via the `forge-ollama-proxy` alias on the `forge-network` docker bridge. The alias is only resolvable from inside containers attached to that network — not from the host OS. Two ways to smoke-test:
 
 ```bash
-# From a forge agent container, or from the host with the proxy resolvable
-curl -s http://forge-ollama-proxy:11434/api/tags | head -20
+# From inside a container on forge-network (mirrors what an agent does)
+docker run --rm --network forge-network curlimages/curl:latest \
+    -s http://forge-ollama-proxy:11434/api/tags | head -20
+
+# Or from the host, hitting the daemon directly on localhost
+curl -s http://localhost:11434/api/tags | head -20
 ```
 
-A populated JSON model list confirms both the proxy and the upgraded daemon are reachable.
+A populated JSON model list from either path confirms the upgraded daemon is up. The first path additionally confirms the docker-bridge route forge agents actually use is intact.
 
 ### 4. Re-run the matrix 2 pre-flight check
 
