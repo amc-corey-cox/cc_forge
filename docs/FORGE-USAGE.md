@@ -155,6 +155,28 @@ the workstation wrapper makes under the hood to fetch metadata from the server.)
 
 ---
 
+## 5. Prune Stale Forgejo Branches
+
+Every session pushes a branch to Forgejo. Once its PR is closed, merged, or
+abandoned, the branch lingers and clutters the namespace. Clean them up on
+demand:
+
+```bash
+forge prune            # dry run — lists what it would delete
+forge prune --apply    # actually delete the stale branches
+```
+
+A branch is kept when it is the default branch, has an **open** PR, or has a
+commit newer than `--days` (default 7). Everything else is pruned. Closed/merged
+PR *records* are left intact as history.
+
+```bash
+forge prune --days 14              # keep anything touched in the last two weeks
+forge prune --repo-name cc_forge   # target a repo without deriving from origin
+```
+
+---
+
 ## Configuration Reference
 
 Settings are read from `~/.config/forge/config.env`, a `.env` file in the working
