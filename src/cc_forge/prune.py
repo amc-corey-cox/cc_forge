@@ -41,9 +41,14 @@ def _committed_at(branch: dict) -> datetime | None:
     if not ts:
         return None
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except ValueError:
         return None
+    # A timestamp without an offset would be naive; comparing it to the aware
+    # cutoff raises TypeError. Assume UTC when Forgejo omits the offset.
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def plan_prune(
@@ -120,17 +125,22 @@ def render_summary(result: PruneResult) -> str:
     """Human-readable kept/deleted summary with per-branch reasons."""
     kept = [p for p in result.plans if not p.delete]
     doomed = [p for p in result.plans if p.delete]
+    reasons = {p.name: p.reason for p in doomed}
     lines: list[str] = []
 
     lines.append(f"Kept ({len(kept)}):")
     for p in kept:
         lines.append(f"  = {p.name}  ({p.reason})")
 
-    verb = "Deleted" if result.applied else "Would delete"
-    lines.append(f"{verb} ({len(doomed)}):")
-    for p in doomed:
-        mark = "-" if p.name in result.deleted or not result.applied else "!"
-        lines.append(f"  {mark} {p.name}  ({p.reason})")
+    if result.applied:
+        # Count what actually got deleted; failures are reported separately.
+        lines.append(f"Deleted ({len(result.deleted)}):")
+        for name in result.deleted:
+            lines.append(f"  - {name}  ({reasons.get(name, '')})")
+    else:
+        lines.append(f"Would delete ({len(doomed)}):")
+        for p in doomed:
+            lines.append(f"  - {p.name}  ({p.reason})")
 
     if result.failed:
         lines.append(f"Failed ({len(result.failed)}):")

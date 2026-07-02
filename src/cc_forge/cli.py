@@ -79,7 +79,7 @@ def pr_show(pr: int, repo_name: str | None, repo: str) -> None:
 @click.option("--repo-name", default=None,
               help="Forgejo repo name (default: derive from the current repo's origin).")
 @click.option("--repo", default=".", help="Path to git repository (for deriving --repo-name).")
-@click.option("--days", default=7, show_default=True,
+@click.option("--days", default=7, show_default=True, type=click.IntRange(min=0),
               help="Keep branches with a commit newer than this many days.")
 @click.option("--apply", is_flag=True,
               help="Actually delete stale branches (default: dry run).")

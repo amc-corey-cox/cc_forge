@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import httpx
 
 from cc_forge.config import ForgeConfig
@@ -112,5 +114,11 @@ class ForgejoClient:
         return self._paginate(f"/repos/{owner}/{repo}/branches")
 
     def delete_branch(self, owner: str, repo: str, branch: str) -> None:
-        """Delete a branch by name."""
-        self._request("DELETE", f"/repos/{owner}/{repo}/branches/{branch}")
+        """Delete a branch by name.
+
+        Slashes are kept literal — Forgejo's branch route is a catch-all that
+        expects `feature/x` unencoded — while other URL-special characters that
+        are still legal in a git ref (e.g. `#`, `%`) are percent-encoded.
+        """
+        path = f"/repos/{owner}/{repo}/branches/{quote(branch, safe='/')}"
+        self._request("DELETE", path)
