@@ -110,16 +110,19 @@ in Forgejo until you're ready to bring it over.
 
 ### Review and Promote
 
-The agent's PR lands in Forgejo (`http://localhost:3000`). Read the diff there,
-then promote it to GitHub when you're satisfied:
+The agent's work lands in Forgejo (`http://localhost:3000`) — a PR, and any issues
+it filed. Review there, then bring what you want over to GitHub:
 
 ```bash
 # From the same repo, on your workstation:
-forge promote <forgejo-pr-number>
+forge promote                   # walk open issues and PRs, confirm each
+forge promote <number>          # promote that PR or issue directly
+forge promote-pr [<number>]     # PRs only
+forge promote-issue [<number>]  # issues only
 ```
 
-`forge promote` fetches the agent's branch from Forgejo, pushes it to your
-GitHub remote, and opens a GitHub PR with the same title and description.
+A PR's branch becomes a GitHub PR; an issue becomes a GitHub issue. Each promoted
+item links back to its Forgejo source and closes it, so it won't be offered again.
 
 **Why promote runs on your machine:** The agent container can talk to Forgejo
 but not to GitHub. Promotion is the deliberate step where reviewed work crosses
