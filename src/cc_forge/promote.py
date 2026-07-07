@@ -1,4 +1,8 @@
-"""Promote a Forgejo PR to a GitHub PR (the deliberate Forgejo→GitHub hop)."""
+"""Promote Forgejo PRs and issues to GitHub (the deliberate Forgejo→GitHub hop).
+
+On a successful promote the source Forgejo item gets a back-link comment and is
+closed, so "still open" is the definition of "not yet promoted".
+"""
 
 from __future__ import annotations
 
@@ -62,7 +66,46 @@ def promote_pull_request(
     _warn_on_repo_mismatch(repo_root, remote, github_repo)
     push_to_remote(repo_root, remote, head, set_upstream=False)
 
-    return _gh_pr_create(config, repo_root, github_repo, head, base, title, body)
+    body = body + _provenance_footer("PR", pr_number, meta["url"])
+    url = _gh_pr_create(config, repo_root, github_repo, head, base, title, body)
+    _finalize_forgejo_item(config, repo_name, pr_number, url)
+    return url
+
+
+def promote_issue(config: ForgeConfig, issue_number: int, repo_path: str = ".") -> str:
+    """Open a GitHub issue mirroring a Forgejo issue; return the GitHub URL.
+
+    Unlike a PR, an issue carries no branch — this is purely a metadata copy
+    plus the back-link/close bookkeeping.
+    """
+    if not is_git_repo(repo_path):
+        raise click.ClickException(f"{repo_path} is not a git repository.")
+
+    repo_root = get_repo_root(repo_path)
+    repo_name = get_repo_name(repo_root)
+    github_repo = config.resolve_github_repo(repo_name)
+
+    meta = issue_metadata(config, issue_number, repo_name)
+    if meta["is_pr"]:
+        raise click.ClickException(
+            f"#{issue_number} is a pull request, not an issue — use promote-pr."
+        )
+    body = meta["body"] + _provenance_footer("issue", issue_number, meta["url"])
+    url = _gh_issue_create(config, repo_root, github_repo, meta["title"], body)
+    _finalize_forgejo_item(config, repo_name, issue_number, url)
+    return url
+
+
+def promote_by_number(
+    config: ForgeConfig, number: int, repo_path: str = ".", remote: str = "origin"
+) -> str:
+    """Promote whichever of PR-or-issue carries this number (they share a space)."""
+    if not is_git_repo(repo_path):
+        raise click.ClickException(f"{repo_path} is not a git repository.")
+    repo_name = get_repo_name(get_repo_root(repo_path))
+    if issue_metadata(config, number, repo_name)["is_pr"]:
+        return promote_pull_request(config, number, repo_path=repo_path, remote=remote)
+    return promote_issue(config, number, repo_path=repo_path)
 
 
 def pr_metadata(config: ForgeConfig, pr_number: int, repo_name: str) -> dict:
@@ -85,6 +128,118 @@ def pr_metadata(config: ForgeConfig, pr_number: int, repo_name: str) -> dict:
         "body": pr.get("body") or "",
         "url": pr.get("html_url", ""),
     }
+
+
+def issue_metadata(config: ForgeConfig, index: int, repo_name: str) -> dict:
+    """Read a Forgejo issue/PR: {title, body, url, is_pr}.
+
+    Works for either kind (PRs are issues in Forgejo); ``is_pr`` distinguishes
+    them so callers can route to the right promote path.
+    """
+    try:
+        with ForgejoClient(config) as forgejo:
+            owner = forgejo.get_current_user()
+            item = forgejo.get_issue(owner, repo_name, index)
+    except httpx.RequestError as e:
+        raise click.ClickException(f"Forgejo unreachable at {config.forgejo_url}: {e}")
+    except ForgejoError as e:
+        raise click.ClickException(f"Forgejo: {e}")
+    return {
+        "title": item["title"],
+        "body": item.get("body") or "",
+        "url": item.get("html_url", ""),
+        "is_pr": item.get("pull_request") is not None,
+    }
+
+
+def list_promotable(config: ForgeConfig, repo_name: str) -> list[dict]:
+    """Open issues and PRs, each as {kind: 'issue'|'pr', number, title}.
+
+    Open == not-yet-promoted, since promoting closes the source item. Sorted by
+    number so the walk order is stable.
+    """
+    try:
+        with ForgejoClient(config) as forgejo:
+            owner = forgejo.get_current_user()
+            prs = forgejo.list_pull_requests(owner, repo_name, state="open")
+            issues = forgejo.list_issues(owner, repo_name, state="open")
+    except httpx.RequestError as e:
+        raise click.ClickException(f"Forgejo unreachable at {config.forgejo_url}: {e}")
+    except ForgejoError as e:
+        raise click.ClickException(f"Forgejo: {e}")
+    items = [{"kind": "issue", "number": i["number"], "title": i["title"]} for i in issues]
+    items += [{"kind": "pr", "number": p["number"], "title": p["title"]} for p in prs]
+    return sorted(items, key=lambda it: it["number"])
+
+
+def walk_promotable(
+    config: ForgeConfig,
+    repo_path: str,
+    remote: str,
+    kinds: tuple[str, ...],
+    *,
+    confirm,
+    echo,
+) -> list[tuple[int, str]]:
+    """Walk promotable items of the given kinds, promoting the ones confirmed.
+
+    ``confirm(prompt) -> bool`` and ``echo(msg)`` are injected so the loop is
+    testable without a live terminal. Returns (number, github_url) per promotion.
+    """
+    repo_name = _derive_repo_name(repo_path)
+    items = [it for it in list_promotable(config, repo_name) if it["kind"] in kinds]
+    if not items:
+        echo("Nothing to promote.")
+        return []
+
+    promoted: list[tuple[int, str]] = []
+    for it in items:
+        echo(f"\n{it['kind'].upper()} #{it['number']}: {it['title']}")
+        if not confirm(f"Promote {it['kind']} #{it['number']}?"):
+            continue
+        if it["kind"] == "pr":
+            url = promote_pull_request(config, it["number"], repo_path=repo_path, remote=remote)
+        else:
+            url = promote_issue(config, it["number"], repo_path=repo_path)
+        echo(f"  -> {url}")
+        promoted.append((it["number"], url))
+    return promoted
+
+
+def _derive_repo_name(repo_path: str) -> str:
+    if not is_git_repo(repo_path):
+        raise click.ClickException("Run inside a git repo or pass --repo-name.")
+    return get_repo_name(get_repo_root(repo_path))
+
+
+def _provenance_footer(kind: str, index: int, url: str) -> str:
+    """A one-line trailer linking the GitHub item back to its Forgejo source."""
+    ref = f"Forgejo {kind} #{index}"
+    link = f"[{ref}]({url})" if url else ref
+    return f"\n\n---\n_Promoted from {link}_"
+
+
+def _finalize_forgejo_item(
+    config: ForgeConfig, repo_name: str, index: int, github_url: str
+) -> None:
+    """Best-effort: back-link the Forgejo item to GitHub and close it.
+
+    Non-fatal — the GitHub item already exists, so a Forgejo hiccup here should
+    warn, not fail the promote.
+    """
+    try:
+        with ForgejoClient(config) as forgejo:
+            owner = forgejo.get_current_user()
+            forgejo.create_issue_comment(
+                owner, repo_name, index, f"Promoted to GitHub: {github_url}"
+            )
+            forgejo.close_issue(owner, repo_name, index)
+    except (httpx.RequestError, ForgejoError) as e:
+        click.echo(
+            f"Warning: promoted to {github_url}, but could not close "
+            f"Forgejo #{index}: {e}",
+            err=True,
+        )
 
 
 def _remote_owner_repo(url: str) -> str | None:
@@ -123,21 +278,42 @@ def _gh_pr_create(
     body: str,
 ) -> str:
     """Create a GitHub PR via the gh CLI; return its URL."""
-    env = os.environ.copy()
-    # Prefer the human's ambient gh auth; fall back to the configured token.
-    if config.github_token and not _has_ambient_gh_auth(env):
-        env["GH_TOKEN"] = config.github_token
-
     result = _run_gh(
         ["pr", "create", "-R", github_repo,
          "--head", head, "--base", base,
          "--title", title, "--body", body],
         cwd=repo_root,
-        env=env,
+        env=_gh_env(config),
     )
     if result.returncode != 0:
         raise click.ClickException(f"gh pr create failed: {result.stderr.strip()}")
     return result.stdout.strip()
+
+
+def _gh_issue_create(
+    config: ForgeConfig,
+    repo_root: Path,
+    github_repo: str,
+    title: str,
+    body: str,
+) -> str:
+    """Create a GitHub issue via the gh CLI; return its URL."""
+    result = _run_gh(
+        ["issue", "create", "-R", github_repo, "--title", title, "--body", body],
+        cwd=repo_root,
+        env=_gh_env(config),
+    )
+    if result.returncode != 0:
+        raise click.ClickException(f"gh issue create failed: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def _gh_env(config: ForgeConfig) -> dict[str, str]:
+    """Env for gh: prefer the human's ambient auth, fall back to the config token."""
+    env = os.environ.copy()
+    if config.github_token and not _has_ambient_gh_auth(env):
+        env["GH_TOKEN"] = config.github_token
+    return env
 
 
 def _run_gh(args: list[str], **kwargs) -> subprocess.CompletedProcess:

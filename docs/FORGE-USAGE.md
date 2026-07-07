@@ -109,33 +109,41 @@ don't intend to open a GitHub PR at all.
 
 ## 4. Promote to GitHub
 
-When you're satisfied with the Forgejo PR, promote it:
+`forge promote` copies finished work from Forgejo up to GitHub — a PR's branch
+becomes a GitHub PR, an issue becomes a GitHub issue.
 
 ```bash
-forge promote <pr-number>
+forge promote                   # walk every open (unpromoted) issue and PR, confirm each
+forge promote <number>          # promote that PR or issue directly
+forge promote-pr [<number>]     # PRs only    (no number → walk promotable PRs)
+forge promote-issue [<number>]  # issues only  (no number → walk promotable issues)
 ```
 
-`<pr-number>` is the Forgejo PR number (shown in the Forgejo UI). Promote fetches
-the agent's branch, creates a local branch from it, pushes that to your GitHub
-remote (`origin` by default), opens a GitHub PR with the same title and body, and
-prints the URL.
+A bare number resolves to whichever it is — Forgejo shares one number space
+between issues and PRs. For a **PR**, promote fetches the agent's branch, pushes
+it to your GitHub remote (`origin` by default), and opens a GitHub PR with the
+same title and body. For an **issue**, it opens a matching GitHub issue. Either
+way the new GitHub item carries a "Promoted from Forgejo …" provenance line, and
+the **source Forgejo item is commented with the GitHub URL and then closed** — so
+"still open" means "not yet promoted", which is exactly what the no-argument walk
+offers you.
 
 **Promotion runs where your GitHub credentials are — your machine, never the
 container.** The agent container can reach Forgejo but has no GitHub access, so
-crossing to GitHub is a deliberate, human-authorized step. How it plays out
-depends on your setup:
+crossing to GitHub is a deliberate, human-authorized step (in the walk, the
+per-item confirm *is* that gate). Setup depends on where you run it:
 
-- **Single machine** — forge, Forgejo, and you on one host. `forge promote` reads
-  the local Forgejo directly and pushes to GitHub. It needs `gh` authenticated
-  (or `FORGE_GITHUB_TOKEN`), plus the GitHub target set via `FORGE_GITHUB_REPO`
-  (`owner/repo`) or `FORGE_GITHUB_OWNER` in `config.env`.
+- **Single host, or a workstation on the same network as Forgejo** —
+  `forge promote` reads Forgejo over the network and writes GitHub locally, in
+  one process. It needs Forgejo reachable (`FORGE_FORGEJO_URL` +
+  `FORGE_FORGEJO_TOKEN` in `config.env`), `gh` authenticated (or
+  `FORGE_GITHUB_TOKEN`), and the GitHub target via `FORGE_GITHUB_REPO`
+  (`owner/repo`) or `FORGE_GITHUB_OWNER`.
 
-- **Separate workstation + server** — run `forge promote` on your **workstation**
-  (the `scripts/remote-forge/` wrapper). It SSHes to the server for the PR's
-  metadata, then does the push and GitHub PR locally with your `gh` auth,
-  **inferring the repo from your `origin` remote — so no `FORGE_GITHUB_*` config
-  is needed on the workstation**. You need the wrapper installed and SSH to the
-  server.
+- **Via the SSH wrapper** — the older `scripts/remote-forge/` wrapper still
+  handles `promote <pr-number>` by SSHing to the server for metadata then writing
+  GitHub locally. Pointing the workstation directly at Forgejo (above) is simpler
+  and also covers issues and the walk.
 
 ### Options
 

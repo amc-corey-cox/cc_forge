@@ -122,3 +122,40 @@ class ForgejoClient:
         """
         path = f"/repos/{owner}/{repo}/branches/{quote(branch, safe='/')}"
         self._request("DELETE", path)
+
+    def get_issue(self, owner: str, repo: str, index: int) -> dict:
+        """Fetch an issue by index.
+
+        In Forgejo, pull requests are issues too, so this resolves either — a
+        PR carries a non-null ``pull_request`` field, an issue does not.
+        """
+        return self._request("GET", f"/repos/{owner}/{repo}/issues/{index}").json()
+
+    def list_issues(self, owner: str, repo: str, state: str = "open") -> list[dict]:
+        """List issues (state: open, closed, all), excluding pull requests.
+
+        The Forgejo issues endpoint returns PRs mixed in; they carry a
+        ``pull_request`` field, which we filter out so callers get issues only.
+        """
+        items = self._paginate(
+            f"/repos/{owner}/{repo}/issues", {"state": state, "type": "issues"}
+        )
+        return [i for i in items if not i.get("pull_request")]
+
+    def create_issue_comment(
+        self, owner: str, repo: str, index: int, body: str
+    ) -> dict:
+        """Post a comment on an issue or PR (they share the issue comment API)."""
+        return self._request(
+            "POST",
+            f"/repos/{owner}/{repo}/issues/{index}/comments",
+            json={"body": body},
+        ).json()
+
+    def close_issue(self, owner: str, repo: str, index: int) -> dict:
+        """Close an issue or PR by index (both go through the issues endpoint)."""
+        return self._request(
+            "PATCH",
+            f"/repos/{owner}/{repo}/issues/{index}",
+            json={"state": "closed"},
+        ).json()
