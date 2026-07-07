@@ -38,6 +38,8 @@ def _fake_forgejo(pr: dict) -> MagicMock:
     client.__exit__.return_value = False
     client.get_current_user.return_value = "admin"
     client.get_pull_request.return_value = pr
+    client.get_issue.return_value = {"state": "open"}
+    client.list_issue_comments.return_value = []  # unmarked → guard passes
     return client
 
 
@@ -170,3 +172,219 @@ def test_pr_metadata_unreachable(monkeypatch, err):
 ])
 def test_remote_owner_repo(url, expected):
     assert promote_mod._remote_owner_repo(url) == expected
+
+
+# --- issue promotion + walker ------------------------------------------------
+
+ISSUE = {
+    "title": "Bug: thing broken",
+    "body": "Steps to reproduce.",
+    "html_url": "http://localhost:3000/cc_forge_admin/cc_forge/issues/12",
+}
+PR_AS_ISSUE = {**ISSUE, "pull_request": {"merged": False}}
+
+
+def _fake_client(**returns) -> MagicMock:
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get_current_user.return_value = "admin"
+    client.get_issue.return_value = {"state": "open"}
+    client.list_issue_comments.return_value = []  # unmarked → guard passes
+    for name, value in returns.items():
+        getattr(client, name).return_value = value
+    return client
+
+
+def _wire_repo(monkeypatch):
+    monkeypatch.setattr(promote_mod, "is_git_repo", lambda p: True)
+    monkeypatch.setattr(promote_mod, "get_repo_root", lambda p: Path("/repo"))
+    monkeypatch.setattr(promote_mod, "get_repo_name", lambda p: "cc_forge")
+
+
+def test_issue_metadata_distinguishes_issue_from_pr(monkeypatch):
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: _fake_client(get_issue=ISSUE))
+    meta = promote_mod.issue_metadata(_config(), 12, "cc_forge")
+    assert meta["is_pr"] is False
+    assert meta["title"] == "Bug: thing broken"
+
+    monkeypatch.setattr(promote_mod, "ForgejoClient",
+                        lambda c: _fake_client(get_issue=PR_AS_ISSUE))
+    assert promote_mod.issue_metadata(_config(), 7, "cc_forge")["is_pr"] is True
+
+
+def test_promote_issue_creates_gh_issue_with_provenance_and_closes(monkeypatch):
+    _wire_repo(monkeypatch)
+    fake = _fake_client(get_issue=ISSUE)
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: fake)
+    captured = {}
+
+    def fake_run(args, **kw):
+        captured["gh_args"] = args
+        return MagicMock(returncode=0,
+                         stdout="https://github.com/me/cc_forge/issues/5\n", stderr="")
+
+    monkeypatch.setattr(promote_mod.subprocess, "run", fake_run)
+    url = promote_mod.promote_issue(_config(), 12, repo_path="/repo")
+
+    assert url == "https://github.com/me/cc_forge/issues/5"
+    args = captured["gh_args"]
+    assert args[:3] == ["gh", "issue", "create"]
+    assert args[args.index("--title") + 1] == "Bug: thing broken"
+    body = args[args.index("--body") + 1]
+    assert "Promoted from" in body and "#12" in body
+    # lock comment (before) + result comment (after), then close
+    assert fake.create_issue_comment.call_count == 2
+    lock_body = fake.create_issue_comment.call_args_list[0].args[3]
+    result_body = fake.create_issue_comment.call_args_list[1].args[3]
+    assert "github.com/me/cc_forge" in lock_body           # target repo URL
+    assert "https://github.com/me/cc_forge/issues/5" in result_body  # item URL
+    fake.close_issue.assert_called_once_with("admin", "cc_forge", 12)
+
+
+def test_promote_issue_blocked_when_already_marked_and_closed(monkeypatch):
+    _wire_repo(monkeypatch)
+    marked = [{"body": "<!-- forge-promote -->\nPromoted to GitHub: https://gh/x/issues/9"}]
+    monkeypatch.setattr(promote_mod, "ForgejoClient",
+                        lambda c: _fake_client(get_issue={**ISSUE, "state": "closed"},
+                                               list_issue_comments=marked))
+    monkeypatch.setattr(promote_mod.subprocess, "run",
+                        lambda *a, **k: pytest.fail("must not create GitHub item"))
+    with pytest.raises(click.ClickException, match="already promoted"):
+        promote_mod.promote_issue(_config(), 9, repo_path="/repo")
+
+
+def test_promote_issue_blocked_when_marked_but_open(monkeypatch):
+    _wire_repo(monkeypatch)
+    marked = [{"body": "<!-- forge-promote -->\nPromoting to https://github.com/me/cc_forge"}]
+    monkeypatch.setattr(promote_mod, "ForgejoClient",
+                        lambda c: _fake_client(get_issue={**ISSUE, "state": "open"},
+                                               list_issue_comments=marked))
+    monkeypatch.setattr(promote_mod.subprocess, "run",
+                        lambda *a, **k: pytest.fail("must not create GitHub item"))
+    with pytest.raises(click.ClickException, match="marked as promoted but still open"):
+        promote_mod.promote_issue(_config(), 9, repo_path="/repo")
+
+
+def test_promote_issue_locks_before_creating(monkeypatch):
+    """The marker lock must be posted before the GitHub item is created."""
+    _wire_repo(monkeypatch)
+    fake = _fake_client(get_issue=ISSUE)
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: fake)
+    order = []
+    fake.create_issue_comment.side_effect = lambda *a, **k: order.append("lock/result")
+
+    def fake_run(args, **kw):
+        order.append("gh")
+        return MagicMock(returncode=0, stdout="https://gh/x/issues/5\n", stderr="")
+
+    monkeypatch.setattr(promote_mod.subprocess, "run", fake_run)
+    promote_mod.promote_issue(_config(), 12, repo_path="/repo")
+    assert order[0] == "lock/result"  # lock posted before gh create
+    assert "gh" in order
+
+
+def test_promote_issue_rejects_a_pr_number(monkeypatch):
+    _wire_repo(monkeypatch)
+    monkeypatch.setattr(promote_mod, "ForgejoClient",
+                        lambda c: _fake_client(get_issue=PR_AS_ISSUE))
+    with pytest.raises(click.ClickException, match="pull request"):
+        promote_mod.promote_issue(_config(), 7, repo_path="/repo")
+
+
+def test_promote_by_number_routes_to_issue_or_pr(monkeypatch):
+    _wire_repo(monkeypatch)
+    calls = {}
+    monkeypatch.setattr(promote_mod, "promote_issue",
+                        lambda c, n, repo_path=".": calls.setdefault("issue", n))
+    monkeypatch.setattr(promote_mod, "promote_pull_request",
+                        lambda c, n, repo_path=".", remote="origin": calls.setdefault("pr", n))
+
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: _fake_client(get_issue=ISSUE))
+    promote_mod.promote_by_number(_config(), 12, repo_path="/repo")
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: _fake_client(get_issue=PR_AS_ISSUE))
+    promote_mod.promote_by_number(_config(), 7, repo_path="/repo")
+
+    assert calls == {"issue": 12, "pr": 7}
+
+
+def test_list_promotable_merges_issues_and_prs_sorted(monkeypatch):
+    fake = _fake_client(
+        list_pull_requests=[{"number": 7, "title": "PR seven"}],
+        list_issues=[{"number": 3, "title": "Issue three"}],
+    )
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: fake)
+    items = promote_mod.list_promotable(_config(), "cc_forge")
+    assert [(i["kind"], i["number"]) for i in items] == [("issue", 3), ("pr", 7)]
+
+
+def test_walk_promotes_only_confirmed_items(monkeypatch):
+    _wire_repo(monkeypatch)
+    monkeypatch.setattr(promote_mod, "list_promotable", lambda c, rn: [
+        {"kind": "issue", "number": 3, "title": "i3"},
+        {"kind": "pr", "number": 7, "title": "p7"},
+    ])
+    done = []
+    monkeypatch.setattr(promote_mod, "promote_issue",
+                        lambda c, n, repo_path=".": done.append(("issue", n)) or "u-i")
+    monkeypatch.setattr(promote_mod, "promote_pull_request",
+                        lambda c, n, repo_path=".", remote="origin": done.append(("pr", n)) or "u-p")
+
+    answers = iter([True, False])  # promote issue 3, skip pr 7
+    result = promote_mod.walk_promotable(
+        _config(), "/repo", "origin", ("issue", "pr"),
+        confirm=lambda prompt: next(answers), echo=lambda m: None,
+    )
+    assert done == [("issue", 3)]
+    assert result == [(3, "u-i")]
+
+
+def test_walk_filters_by_kind(monkeypatch):
+    _wire_repo(monkeypatch)
+    monkeypatch.setattr(promote_mod, "list_promotable", lambda c, rn: [
+        {"kind": "issue", "number": 3, "title": "i3"},
+        {"kind": "pr", "number": 7, "title": "p7"},
+    ])
+    done = []
+    monkeypatch.setattr(promote_mod, "promote_pull_request",
+                        lambda c, n, repo_path=".", remote="origin": done.append(n))
+    monkeypatch.setattr(promote_mod, "promote_issue",
+                        lambda c, n, repo_path=".": done.append(("issue", n)))
+    promote_mod.walk_promotable(_config(), "/repo", "origin", ("pr",),
+                                confirm=lambda p: True, echo=lambda m: None)
+    assert done == [7]  # issue 3 was never offered
+
+
+def test_walk_reports_nothing_to_promote(monkeypatch):
+    _wire_repo(monkeypatch)
+    monkeypatch.setattr(promote_mod, "list_promotable", lambda c, rn: [])
+    msgs = []
+    result = promote_mod.walk_promotable(_config(), "/repo", "origin", ("issue", "pr"),
+                                         confirm=lambda p: True, echo=msgs.append)
+    assert result == []
+    assert any("Nothing to promote" in m for m in msgs)
+
+
+def test_finalize_is_best_effort(monkeypatch, capsys):
+    import httpx
+
+    def boom(c):
+        m = MagicMock()
+        m.__enter__.return_value = m
+        m.__exit__.return_value = False
+        m.get_current_user.side_effect = httpx.ConnectError("down")
+        return m
+
+    monkeypatch.setattr(promote_mod, "ForgejoClient", boom)
+    promote_mod._finalize_forgejo_item(_config(), "cc_forge", 5, "https://gh/x")  # no raise
+    assert "could not close" in capsys.readouterr().err
+
+
+def test_provenance_footer_links_when_url_present():
+    footer = promote_mod._provenance_footer("issue", 12, "http://x/issues/12")
+    assert "Forgejo issue #12" in footer and "(http://x/issues/12)" in footer
+
+
+def test_provenance_footer_plain_without_url():
+    footer = promote_mod._provenance_footer("PR", 7, "")
+    assert "Forgejo PR #7" in footer and "(" not in footer

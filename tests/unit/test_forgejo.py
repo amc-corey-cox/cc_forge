@@ -180,3 +180,59 @@ def test_list_pull_requests_paginates(client: ForgejoClient, httpx_mock) -> None
     prs = client.list_pull_requests("admin", "myrepo", state="all")
     assert len(prs) == 51
     assert prs[-1]["number"] == 50
+
+
+def test_get_issue(client: ForgejoClient, httpx_mock) -> None:
+    httpx_mock.add_response(
+        url="http://localhost:3000/api/v1/repos/admin/myrepo/issues/12",
+        json={"title": "Bug", "body": "b", "number": 12},
+    )
+    assert client.get_issue("admin", "myrepo", 12)["number"] == 12
+
+
+def test_list_issues_filters_out_prs(client: ForgejoClient, httpx_mock) -> None:
+    import re
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/issues\?.*"),
+        json=[
+            {"number": 3, "title": "real issue"},
+            {"number": 7, "title": "a pr", "pull_request": {"merged": False}},
+        ],
+    )
+    issues = client.list_issues("admin", "myrepo")
+    assert [i["number"] for i in issues] == [3]
+
+
+def test_create_issue_comment(client: ForgejoClient, httpx_mock) -> None:
+    import re
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/issues/12/comments$"),
+        method="POST",
+        json={"id": 1, "body": "hi"},
+        status_code=201,
+    )
+    assert client.create_issue_comment("admin", "myrepo", 12, "hi")["id"] == 1
+
+
+def test_close_issue(client: ForgejoClient, httpx_mock) -> None:
+    import re
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/issues/12$"),
+        method="PATCH",
+        json={"number": 12, "state": "closed"},
+    )
+    assert client.close_issue("admin", "myrepo", 12)["state"] == "closed"
+
+
+def test_list_issue_comments(client: ForgejoClient, httpx_mock) -> None:
+    import re
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/issues/12/comments\?.*"),
+        json=[{"id": 1, "body": "hi"}, {"id": 2, "body": "there"}],
+    )
+    comments = client.list_issue_comments("admin", "myrepo", 12)
+    assert [c["id"] for c in comments] == [1, 2]
