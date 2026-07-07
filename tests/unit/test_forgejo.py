@@ -118,3 +118,65 @@ def test_get_pull_request(client: ForgejoClient, httpx_mock) -> None:
     assert pr["head"]["ref"] == "agent/feature"
     assert pr["base"]["ref"] == "main"
     assert pr["title"] == "Add feature"
+
+
+def test_get_repo(client: ForgejoClient, httpx_mock) -> None:
+    httpx_mock.add_response(
+        url="http://localhost:3000/api/v1/repos/admin/myrepo",
+        json={"name": "myrepo", "default_branch": "main"},
+    )
+    assert client.get_repo("admin", "myrepo")["default_branch"] == "main"
+
+
+def test_delete_branch(client: ForgejoClient, httpx_mock) -> None:
+    import re
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/repos/admin/myrepo/branches/stale$"),
+        method="DELETE",
+        status_code=204,
+    )
+    client.delete_branch("admin", "myrepo", "stale")
+    assert httpx_mock.get_requests()[0].method == "DELETE"
+
+
+def test_delete_branch_keeps_slashes_encodes_specials(
+    client: ForgejoClient, httpx_mock
+) -> None:
+    import re
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/branches/.*"), method="DELETE", status_code=204
+    )
+    client.delete_branch("admin", "myrepo", "feature/x#1")
+    path = httpx_mock.get_requests()[0].url.raw_path.decode()
+    # Slash stays literal (catch-all route); '#' is percent-encoded.
+    assert path.endswith("/branches/feature/x%231")
+
+
+def test_list_branches_paginates(client: ForgejoClient, httpx_mock) -> None:
+    import re
+
+    page1 = [{"name": f"b{i}"} for i in range(50)]
+    page2 = [{"name": "b50"}]
+    httpx_mock.add_response(url=re.compile(r".*/branches\?.*page=1.*"), json=page1)
+    httpx_mock.add_response(url=re.compile(r".*/branches\?.*page=2.*"), json=page2)
+    branches = client.list_branches("admin", "myrepo")
+    assert len(branches) == 51
+    assert branches[-1]["name"] == "b50"
+
+
+def test_list_pull_requests_paginates(client: ForgejoClient, httpx_mock) -> None:
+    import re
+
+    page1 = [{"number": i} for i in range(50)]
+    page2 = [{"number": 50}]
+    httpx_mock.add_response(
+        url=re.compile(r".*/pulls\?.*state=all.*page=1.*"), json=page1
+    )
+    httpx_mock.add_response(
+        url=re.compile(r".*/pulls\?.*state=all.*page=2.*"), json=page2
+    )
+    prs = client.list_pull_requests("admin", "myrepo", state="all")
+    assert len(prs) == 51
+    assert prs[-1]["number"] == 50

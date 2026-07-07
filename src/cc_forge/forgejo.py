@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import httpx
 
 from cc_forge.config import ForgeConfig
@@ -82,3 +84,41 @@ class ForgejoClient:
         """Fetch a pull request's metadata (head/base refs, title, body, url)."""
         resp = self._request("GET", f"/repos/{owner}/{repo}/pulls/{index}")
         return resp.json()
+
+    def _paginate(self, path: str, params: dict | None = None) -> list[dict]:
+        """Fetch every page of a list endpoint (Forgejo caps a page at 50)."""
+        query = dict(params or {})
+        query["limit"] = 50
+        items: list[dict] = []
+        page = 1
+        while True:
+            query["page"] = page
+            batch = self._request("GET", path, params=query).json()
+            items.extend(batch)
+            if len(batch) < 50:
+                return items
+            page += 1
+
+    def get_repo(self, owner: str, repo: str) -> dict:
+        """Fetch a repository's metadata (includes default_branch)."""
+        return self._request("GET", f"/repos/{owner}/{repo}").json()
+
+    def list_pull_requests(
+        self, owner: str, repo: str, state: str = "all"
+    ) -> list[dict]:
+        """List pull requests (state: open, closed, all)."""
+        return self._paginate(f"/repos/{owner}/{repo}/pulls", {"state": state})
+
+    def list_branches(self, owner: str, repo: str) -> list[dict]:
+        """List branches (each carries name + commit.timestamp)."""
+        return self._paginate(f"/repos/{owner}/{repo}/branches")
+
+    def delete_branch(self, owner: str, repo: str, branch: str) -> None:
+        """Delete a branch by name.
+
+        Slashes are kept literal — Forgejo's branch route is a catch-all that
+        expects `feature/x` unencoded — while other URL-special characters that
+        are still legal in a git ref (e.g. `#`, `%`) are percent-encoded.
+        """
+        path = f"/repos/{owner}/{repo}/branches/{quote(branch, safe='/')}"
+        self._request("DELETE", path)

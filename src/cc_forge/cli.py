@@ -76,6 +76,30 @@ def pr_show(pr: int, repo_name: str | None, repo: str) -> None:
 
 
 @main.command()
+@click.option("--repo-name", default=None,
+              help="Forgejo repo name (default: derive from the current repo's origin).")
+@click.option("--repo", default=".", help="Path to git repository (for deriving --repo-name).")
+@click.option("--days", default=7, show_default=True, type=click.IntRange(min=0),
+              help="Keep branches with a commit newer than this many days.")
+@click.option("--apply", is_flag=True,
+              help="Actually delete stale branches (default: dry run).")
+def prune(repo_name: str | None, repo: str, days: int, apply: bool) -> None:
+    """Prune stale Forgejo branches (no open PR, not recently active)."""
+    from cc_forge.config import load_config
+    from cc_forge.git import get_repo_name, get_repo_root, is_git_repo
+    from cc_forge.prune import prune_branches, render_summary
+
+    if not repo_name:
+        if not is_git_repo(repo):
+            raise click.ClickException("Run inside a git repo or pass --repo-name.")
+        repo_name = get_repo_name(get_repo_root(repo))
+
+    cfg = load_config()
+    result = prune_branches(cfg, repo_name, days=days, apply=apply)
+    click.echo(render_summary(result))
+
+
+@main.command()
 def status() -> None:
     """Show running forge sessions."""
     from cc_forge.docker import list_forge_containers
