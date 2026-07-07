@@ -1,12 +1,16 @@
 """Promote Forgejo PRs and issues to GitHub (the deliberate Forgejo→GitHub hop).
 
-On a successful promote the source Forgejo item gets a back-link comment and is
-closed, so "still open" is the definition of "not yet promoted".
+A promote marks the source Forgejo item with a comment *before* creating the
+GitHub item, then records the resulting URL and closes it. That marker is a lock:
+once present, promote refuses to create a duplicate — no matter where a run
+broke — until a human deletes it. So a marked+closed item is a clean success; a
+marked-but-open item means a run failed partway and needs a look.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -48,6 +52,8 @@ def promote_pull_request(
     meta = pr_metadata(config, pr_number, repo_name)
     head, base, title, body = meta["head"], meta["base"], meta["title"], meta["body"]
 
+    _guard_not_promoted(config, repo_name, pr_number)
+
     if not has_remote(repo_root, "forgejo"):
         raise click.ClickException(
             "No 'forgejo' remote found. Run a forge session first "
@@ -66,8 +72,15 @@ def promote_pull_request(
     _warn_on_repo_mismatch(repo_root, remote, github_repo)
     push_to_remote(repo_root, remote, head, set_upstream=False)
 
+    _post_lock(config, repo_name, pr_number, f"https://github.com/{github_repo}")
     body = body + _provenance_footer("PR", pr_number, meta["url"])
-    url = _gh_pr_create(config, repo_root, github_repo, head, base, title, body)
+    try:
+        url = _gh_pr_create(config, repo_root, github_repo, head, base, title, body)
+    except click.ClickException as e:
+        raise click.ClickException(
+            f"{e.message} Forgejo #{pr_number} was marked as promoted — "
+            "delete the marker comment before retrying."
+        )
     _finalize_forgejo_item(config, repo_name, pr_number, url)
     return url
 
@@ -90,8 +103,17 @@ def promote_issue(config: ForgeConfig, issue_number: int, repo_path: str = ".") 
         raise click.ClickException(
             f"#{issue_number} is a pull request, not an issue — use promote-pr."
         )
+
+    _guard_not_promoted(config, repo_name, issue_number)
+    _post_lock(config, repo_name, issue_number, f"https://github.com/{github_repo}")
     body = meta["body"] + _provenance_footer("issue", issue_number, meta["url"])
-    url = _gh_issue_create(config, repo_root, github_repo, meta["title"], body)
+    try:
+        url = _gh_issue_create(config, repo_root, github_repo, meta["title"], body)
+    except click.ClickException as e:
+        raise click.ClickException(
+            f"{e.message} Forgejo #{issue_number} was marked as promoted — "
+            "delete the marker comment before retrying."
+        )
     _finalize_forgejo_item(config, repo_name, issue_number, url)
     return url
 
@@ -197,10 +219,15 @@ def walk_promotable(
         echo(f"\n{it['kind'].upper()} #{it['number']}: {it['title']}")
         if not confirm(f"Promote {it['kind']} #{it['number']}?"):
             continue
-        if it["kind"] == "pr":
-            url = promote_pull_request(config, it["number"], repo_path=repo_path, remote=remote)
-        else:
-            url = promote_issue(config, it["number"], repo_path=repo_path)
+        try:
+            if it["kind"] == "pr":
+                url = promote_pull_request(config, it["number"], repo_path=repo_path, remote=remote)
+            else:
+                url = promote_issue(config, it["number"], repo_path=repo_path)
+        except click.ClickException as e:
+            # One item's failure (already-marked, gh error) shouldn't abort the walk.
+            echo(f"  skipped: {e.message}")
+            continue
         echo(f"  -> {url}")
         promoted.append((it["number"], url))
     return promoted
@@ -208,7 +235,7 @@ def walk_promotable(
 
 def _derive_repo_name(repo_path: str) -> str:
     if not is_git_repo(repo_path):
-        raise click.ClickException("Run inside a git repo or pass --repo-name.")
+        raise click.ClickException(f"{repo_path} is not a git repository.")
     return get_repo_name(get_repo_root(repo_path))
 
 
@@ -219,19 +246,100 @@ def _provenance_footer(kind: str, index: int, url: str) -> str:
     return f"\n\n---\n_Promoted from {link}_"
 
 
-def _finalize_forgejo_item(
-    config: ForgeConfig, repo_name: str, index: int, github_url: str
-) -> None:
-    """Best-effort: back-link the Forgejo item to GitHub and close it.
+# A hidden token embedded in every forge-authored promotion comment. It, not the
+# human-readable text, is what the guard matches — so wording can change freely.
+_MARKER = "<!-- forge-promote -->"
 
-    Non-fatal — the GitHub item already exists, so a Forgejo hiccup here should
-    warn, not fail the promote.
+
+def _marked_comments(comments: list[dict]) -> list[dict]:
+    return [c for c in comments if _MARKER in (c.get("body") or "")]
+
+
+def _promoted_url(marked: list[dict]) -> str | None:
+    """Best URL evidence from marker comments: the result's item URL if present,
+    else any URL (e.g. the lock's repo URL)."""
+    for c in marked:
+        m = re.search(r"Promoted to GitHub:\s*(\S+)", c.get("body") or "")
+        if m:
+            return m.group(1)
+    for c in marked:
+        m = re.search(r"https?://\S+", c.get("body") or "")
+        if m:
+            return m.group(0)
+    return None
+
+
+def _guard_not_promoted(config: ForgeConfig, repo_name: str, number: int) -> None:
+    """Raise if the Forgejo item already carries a promotion marker.
+
+    A marker means a promote was at least started, so we never auto-create a
+    duplicate — the human clears the marker to (re-)promote. Marked+closed reads
+    as a clean success; marked+open means a prior run broke partway.
+    """
+    try:
+        with ForgejoClient(config) as forgejo:
+            owner = forgejo.get_current_user()
+            marked = _marked_comments(
+                forgejo.list_issue_comments(owner, repo_name, number)
+            )
+            if not marked:
+                return
+            closed = forgejo.get_issue(owner, repo_name, number).get("state") == "closed"
+    except httpx.RequestError as e:
+        raise click.ClickException(f"Forgejo unreachable at {config.forgejo_url}: {e}")
+    except ForgejoError as e:
+        raise click.ClickException(f"Forgejo: {e}")
+
+    url = _promoted_url(marked)
+    if closed:
+        raise click.ClickException(
+            f"Forgejo #{number} is already promoted"
+            + (f" → {url}" if url else "")
+            + ". Delete the marker comment to re-promote."
+        )
+    raise click.ClickException(
+        f"Forgejo #{number} is marked as promoted but still open — a prior run "
+        "may have failed partway. Verify it isn't already on GitHub"
+        + (f" ({url})" if url else "")
+        + ", then delete the marker comment and re-run."
+    )
+
+
+def _post_lock(
+    config: ForgeConfig, repo_name: str, number: int, repo_url: str
+) -> None:
+    """Mark the item as being promoted *before* the transfer (the dedup lock).
+
+    Fatal on failure: without the lock there's no duplicate protection, so we
+    refuse to create the GitHub item.
     """
     try:
         with ForgejoClient(config) as forgejo:
             owner = forgejo.get_current_user()
             forgejo.create_issue_comment(
-                owner, repo_name, index, f"Promoted to GitHub: {github_url}"
+                owner, repo_name, number,
+                f"{_MARKER}\nPromoting to {repo_url} — "
+                "delete this comment to re-promote.",
+            )
+    except httpx.RequestError as e:
+        raise click.ClickException(f"Forgejo unreachable at {config.forgejo_url}: {e}")
+    except ForgejoError as e:
+        raise click.ClickException(f"Forgejo: {e}")
+
+
+def _finalize_forgejo_item(
+    config: ForgeConfig, repo_name: str, index: int, github_url: str
+) -> None:
+    """Best-effort: record the GitHub URL on the Forgejo item and close it.
+
+    Non-fatal — the GitHub item already exists and the lock is already in place,
+    so a Forgejo hiccup here should warn, not fail the promote.
+    """
+    try:
+        with ForgejoClient(config) as forgejo:
+            owner = forgejo.get_current_user()
+            forgejo.create_issue_comment(
+                owner, repo_name, index, f"{_MARKER}\nPromoted to GitHub: {github_url}"
             )
             forgejo.close_issue(owner, repo_name, index)
     except (httpx.RequestError, ForgejoError) as e:

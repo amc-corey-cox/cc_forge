@@ -38,6 +38,8 @@ def _fake_forgejo(pr: dict) -> MagicMock:
     client.__exit__.return_value = False
     client.get_current_user.return_value = "admin"
     client.get_pull_request.return_value = pr
+    client.get_issue.return_value = {"state": "open"}
+    client.list_issue_comments.return_value = []  # unmarked → guard passes
     return client
 
 
@@ -187,6 +189,8 @@ def _fake_client(**returns) -> MagicMock:
     client.__enter__.return_value = client
     client.__exit__.return_value = False
     client.get_current_user.return_value = "admin"
+    client.get_issue.return_value = {"state": "open"}
+    client.list_issue_comments.return_value = []  # unmarked → guard passes
     for name, value in returns.items():
         getattr(client, name).return_value = value
     return client
@@ -229,9 +233,55 @@ def test_promote_issue_creates_gh_issue_with_provenance_and_closes(monkeypatch):
     assert args[args.index("--title") + 1] == "Bug: thing broken"
     body = args[args.index("--body") + 1]
     assert "Promoted from" in body and "#12" in body
-    # back-link + close on the Forgejo side
-    fake.create_issue_comment.assert_called_once()
+    # lock comment (before) + result comment (after), then close
+    assert fake.create_issue_comment.call_count == 2
+    lock_body = fake.create_issue_comment.call_args_list[0].args[3]
+    result_body = fake.create_issue_comment.call_args_list[1].args[3]
+    assert "github.com/me/cc_forge" in lock_body           # target repo URL
+    assert "https://github.com/me/cc_forge/issues/5" in result_body  # item URL
     fake.close_issue.assert_called_once_with("admin", "cc_forge", 12)
+
+
+def test_promote_issue_blocked_when_already_marked_and_closed(monkeypatch):
+    _wire_repo(monkeypatch)
+    marked = [{"body": "<!-- forge-promote -->\nPromoted to GitHub: https://gh/x/issues/9"}]
+    monkeypatch.setattr(promote_mod, "ForgejoClient",
+                        lambda c: _fake_client(get_issue={**ISSUE, "state": "closed"},
+                                               list_issue_comments=marked))
+    monkeypatch.setattr(promote_mod.subprocess, "run",
+                        lambda *a, **k: pytest.fail("must not create GitHub item"))
+    with pytest.raises(click.ClickException, match="already promoted"):
+        promote_mod.promote_issue(_config(), 9, repo_path="/repo")
+
+
+def test_promote_issue_blocked_when_marked_but_open(monkeypatch):
+    _wire_repo(monkeypatch)
+    marked = [{"body": "<!-- forge-promote -->\nPromoting to https://github.com/me/cc_forge"}]
+    monkeypatch.setattr(promote_mod, "ForgejoClient",
+                        lambda c: _fake_client(get_issue={**ISSUE, "state": "open"},
+                                               list_issue_comments=marked))
+    monkeypatch.setattr(promote_mod.subprocess, "run",
+                        lambda *a, **k: pytest.fail("must not create GitHub item"))
+    with pytest.raises(click.ClickException, match="marked as promoted but still open"):
+        promote_mod.promote_issue(_config(), 9, repo_path="/repo")
+
+
+def test_promote_issue_locks_before_creating(monkeypatch):
+    """The marker lock must be posted before the GitHub item is created."""
+    _wire_repo(monkeypatch)
+    fake = _fake_client(get_issue=ISSUE)
+    monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: fake)
+    order = []
+    fake.create_issue_comment.side_effect = lambda *a, **k: order.append("lock/result")
+
+    def fake_run(args, **kw):
+        order.append("gh")
+        return MagicMock(returncode=0, stdout="https://gh/x/issues/5\n", stderr="")
+
+    monkeypatch.setattr(promote_mod.subprocess, "run", fake_run)
+    promote_mod.promote_issue(_config(), 12, repo_path="/repo")
+    assert order[0] == "lock/result"  # lock posted before gh create
+    assert "gh" in order
 
 
 def test_promote_issue_rejects_a_pr_number(monkeypatch):

@@ -152,6 +152,10 @@ class ForgejoClient:
             json={"body": body},
         ).json()
 
+    def list_issue_comments(self, owner: str, repo: str, index: int) -> list[dict]:
+        """List the comments on an issue or PR (each carries a body)."""
+        return self._paginate(f"/repos/{owner}/{repo}/issues/{index}/comments")
+
     def close_issue(self, owner: str, repo: str, index: int) -> dict:
         """Close an issue or PR by index (both go through the issues endpoint)."""
         return self._request(

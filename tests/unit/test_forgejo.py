@@ -225,3 +225,14 @@ def test_close_issue(client: ForgejoClient, httpx_mock) -> None:
         json={"number": 12, "state": "closed"},
     )
     assert client.close_issue("admin", "myrepo", 12)["state"] == "closed"
+
+
+def test_list_issue_comments(client: ForgejoClient, httpx_mock) -> None:
+    import re
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/issues/12/comments\?.*"),
+        json=[{"id": 1, "body": "hi"}, {"id": 2, "body": "there"}],
+    )
+    comments = client.list_issue_comments("admin", "myrepo", 12)
+    assert [c["id"] for c in comments] == [1, 2]

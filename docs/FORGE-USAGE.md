@@ -123,10 +123,16 @@ A bare number resolves to whichever it is — Forgejo shares one number space
 between issues and PRs. For a **PR**, promote fetches the agent's branch, pushes
 it to your GitHub remote (`origin` by default), and opens a GitHub PR with the
 same title and body. For an **issue**, it opens a matching GitHub issue. Either
-way the new GitHub item carries a "Promoted from Forgejo …" provenance line, and
-the **source Forgejo item is commented with the GitHub URL and then closed** — so
-"still open" means "not yet promoted", which is exactly what the no-argument walk
-offers you.
+way the new GitHub item carries a "Promoted from Forgejo …" provenance line.
+
+**Duplicate protection.** Before creating anything on GitHub, promote drops a
+marker comment on the Forgejo item (naming the target repo); after the transfer
+it adds the resulting URL and closes the item. That marker is a lock — if a run
+breaks anywhere, the marker stays and a re-run won't create a second copy; it
+tells you the item is already marked and to **delete the marker comment to
+re-promote**. So a marked-and-closed item is a confirmed promote (its comments
+show the repo and the item URL); a marked-but-open one flags a run that broke
+partway. The no-argument walk offers open items.
 
 **Promotion runs where your GitHub credentials are — your machine, never the
 container.** The agent container can reach Forgejo but has no GitHub access, so
@@ -180,7 +186,7 @@ PR *records* are left intact as history.
 
 ```bash
 forge prune --days 14              # keep anything touched in the last two weeks
-forge prune --repo-name cc_forge   # target a repo without deriving from origin
+forge prune --forgejo-repo cc_forge   # target a repo without deriving from origin
 ```
 
 ---

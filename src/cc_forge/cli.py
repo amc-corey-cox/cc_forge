@@ -100,9 +100,9 @@ def promote_issue(issue: int | None, repo: str) -> None:
 
 @main.command(name="pr-show")
 @click.argument("pr", type=int)
-@click.option("--repo-name", default=None,
-              help="Forgejo repo name (default: derive from the current repo's origin).")
-@click.option("--repo", default=".", help="Path to git repository (for deriving --repo-name).")
+@click.option("--forgejo-repo", "repo_name", default=None,
+              help="Forgejo repo name (default: derive from --repo's origin).")
+@click.option("--repo", default=".", help="Path to git repository (used to derive --forgejo-repo).")
 def pr_show(pr: int, repo_name: str | None, repo: str) -> None:
     """Print a Forgejo PR's metadata as JSON (head, base, title, body)."""
     import json
@@ -113,7 +113,7 @@ def pr_show(pr: int, repo_name: str | None, repo: str) -> None:
 
     if not repo_name:
         if not is_git_repo(repo):
-            raise click.ClickException("Run inside a git repo or pass --repo-name.")
+            raise click.ClickException("Run inside a git repo or pass --forgejo-repo.")
         repo_name = get_repo_name(get_repo_root(repo))
 
     cfg = load_config()
@@ -121,9 +121,9 @@ def pr_show(pr: int, repo_name: str | None, repo: str) -> None:
 
 
 @main.command()
-@click.option("--repo-name", default=None,
-              help="Forgejo repo name (default: derive from the current repo's origin).")
-@click.option("--repo", default=".", help="Path to git repository (for deriving --repo-name).")
+@click.option("--forgejo-repo", "repo_name", default=None,
+              help="Forgejo repo name (default: derive from --repo's origin).")
+@click.option("--repo", default=".", help="Path to git repository (used to derive --forgejo-repo).")
 @click.option("--days", default=7, show_default=True, type=click.IntRange(min=0),
               help="Keep branches with a commit newer than this many days.")
 @click.option("--apply", is_flag=True,
@@ -136,7 +136,7 @@ def prune(repo_name: str | None, repo: str, days: int, apply: bool) -> None:
 
     if not repo_name:
         if not is_git_repo(repo):
-            raise click.ClickException("Run inside a git repo or pass --repo-name.")
+            raise click.ClickException("Run inside a git repo or pass --forgejo-repo.")
         repo_name = get_repo_name(get_repo_root(repo))
 
     cfg = load_config()
