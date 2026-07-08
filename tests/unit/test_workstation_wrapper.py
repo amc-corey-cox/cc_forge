@@ -207,6 +207,16 @@ def test_promote_passes_number_through(shim_bin, tmp_path):
     assert "uv run -- forge promote 5 --repo /home/u/myrepo" in log
 
 
+def test_promote_rejects_user_repo_flag(shim_bin, tmp_path):
+    # The wrapper sets --repo itself; a user-passed one would collide.
+    proc, log = run_wrapper(
+        shim_bin, tmp_path, ["promote", "--repo", "/foo"], CC_FORGE_REPO=str(tmp_path)
+    )
+    assert proc.returncode == 1
+    assert "do not pass --repo" in proc.stderr
+    assert "uv run" not in log
+
+
 def test_promote_ensures_forgejo_remote(shim_bin, tmp_path):
     # No forgejo remote yet → the wrapper adds one before delegating.
     proc, log = run_wrapper(shim_bin, tmp_path, ["promote"], CC_FORGE_REPO=str(tmp_path))

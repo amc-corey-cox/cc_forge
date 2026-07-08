@@ -122,7 +122,8 @@ forge promote-issue [<number>]  # issues only
 ```
 
 A PR's branch becomes a GitHub PR; an issue becomes a GitHub issue. Each promoted
-item links back to its Forgejo source and closes it, so it won't be offered again.
+item is marked with a back-link comment and normally closed, so it drops off the
+walk — and the marker blocks a duplicate even if that close didn't land.
 
 **Why promote runs on your machine:** The agent container can talk to Forgejo
 but not to GitHub. Promotion is the deliberate step where reviewed work crosses

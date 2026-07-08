@@ -55,8 +55,8 @@ branches are available locally via `git branch -r | grep forgejo/`.
 
 ## Promoting to GitHub
 
-Unlike `run`, the promote family (`forge promote`, `promote-pr`, `promote-issue`)
-runs **locally** on the workstation — it reads the LAN Forgejo directly and writes
+Unlike `run`, the promote family (`forge promote`, `forge promote-pr`,
+`forge promote-issue`) runs **locally** on the workstation — it reads the LAN Forgejo directly and writes
 GitHub with your own `gh` auth, no SSH round-trip. It needs a local cc_forge
 checkout (`CC_FORGE_REPO`, default `~/Code/cc_forge`), `uv`, `gh` authenticated
 for the destination, and a `~/.config/forge/config.env` pointing at Forgejo:

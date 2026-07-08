@@ -83,6 +83,18 @@ elif [ "$SUBCMD" = "promote" ] || [ "$SUBCMD" = "promote-pr" ] || [ "$SUBCMD" = 
     # auth. No SSH round-trip — that split was interim scaffolding.
     command -v uv >/dev/null || {
         echo "forge: uv is required to run '$SUBCMD' on the workstation" >&2; exit 1; }
+    command -v gh >/dev/null || {
+        echo "forge: gh CLI is required for '$SUBCMD' (https://cli.github.com)" >&2; exit 1; }
+
+    # This wrapper sets --repo to the current repo; a second --repo would collide.
+    for a in "$@"; do
+        case "$a" in
+            --repo|--repo=*)
+                echo "forge: this wrapper targets the current repo; do not pass --repo yourself" >&2
+                exit 1
+                ;;
+        esac
+    done
 
     USER_REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
         echo "forge: not a git repository" >&2; exit 1; }
