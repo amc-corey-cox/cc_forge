@@ -20,6 +20,7 @@ import httpx
 from cc_forge.config import ForgeConfig
 from cc_forge.forgejo import ForgejoClient, ForgejoError
 from cc_forge.git import (
+    GitError,
     create_branch_from_ref,
     fetch_remote,
     get_current_branch,
@@ -59,18 +60,29 @@ def promote_pull_request(
             "No 'forgejo' remote found. Run a forge session first "
             "(the workstation wrapper adds it)."
         )
-    fetch_remote(repo_root, "forgejo")
+    try:
+        fetch_remote(repo_root, "forgejo")
+    except GitError as e:
+        raise click.ClickException(
+            f"Could not fetch the 'forgejo' remote (is Forgejo reachable?): {e}"
+        )
     if get_current_branch(repo_root) == head:
         raise click.ClickException(
             f"Branch '{head}' is currently checked out; switch to another branch "
             "before promoting."
         )
-    create_branch_from_ref(repo_root, head, f"forgejo/{head}")
+    try:
+        create_branch_from_ref(repo_root, head, f"forgejo/{head}")
+    except GitError as e:
+        raise click.ClickException(f"Could not materialize branch '{head}': {e}")
 
     if not has_remote(repo_root, remote):
         raise click.ClickException(f"No '{remote}' remote to push to.")
     _warn_on_repo_mismatch(repo_root, remote, github_repo)
-    push_to_remote(repo_root, remote, head, set_upstream=False)
+    try:
+        push_to_remote(repo_root, remote, head, set_upstream=False)
+    except GitError as e:
+        raise click.ClickException(f"Could not push '{head}' to '{remote}': {e}")
 
     _post_lock(config, repo_name, pr_number, f"https://github.com/{github_repo}")
     body = body + _provenance_footer("PR", pr_number, meta["url"])
