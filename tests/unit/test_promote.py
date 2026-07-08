@@ -139,6 +139,19 @@ def test_promote_errors_when_gh_missing(monkeypatch):
         promote_mod.promote_pull_request(_config(), 7, repo_path="/repo")
 
 
+def test_promote_git_fetch_failure_becomes_clean_message(monkeypatch):
+    from cc_forge.git import GitError
+
+    _wire(monkeypatch)
+
+    def boom(root, remote):
+        raise GitError("Could not resolve host")
+
+    monkeypatch.setattr(promote_mod, "fetch_remote", boom)
+    with pytest.raises(click.ClickException, match="is Forgejo reachable"):
+        promote_mod.promote_pull_request(_config(), 7, repo_path="/repo")
+
+
 def test_pr_metadata_happy(monkeypatch):
     monkeypatch.setattr(promote_mod, "ForgejoClient", lambda c: _fake_forgejo(PR))
     meta = promote_mod.pr_metadata(_config(), 7, "cc_forge")

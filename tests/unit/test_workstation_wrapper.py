@@ -34,7 +34,9 @@ exit "${RSYNC_RC:-0}"
 _GIT_SHIM = """#!/bin/bash
 echo "git $*" >> "$CALL_LOG"
 case "$1 $2" in
-    "rev-parse --show-toplevel") echo "${FAKE_REPO_PATH:-/home/u/myrepo}"; exit 0;;
+    "rev-parse --show-toplevel")
+        [ -n "$GIT_TOPLEVEL_RC" ] && exit "$GIT_TOPLEVEL_RC"
+        echo "${FAKE_REPO_PATH:-/home/u/myrepo}"; exit 0;;
     "rev-parse --abbrev-ref") echo "${FAKE_CURRENT_BRANCH:-main}"; exit 0;;
     "remote get-url")
         if [ -n "$GIT_HAS_REMOTE" ]; then echo "$GIT_REMOTE_URL"; exit 0; fi
@@ -51,6 +53,11 @@ echo "https://github.com/me/myrepo/pull/9"
 exit "${GH_RC:-0}"
 """
 
+_UV_SHIM = """#!/bin/bash
+echo "uv $*" >> "$CALL_LOG"
+exit "${UV_RC:-0}"
+"""
+
 
 @pytest.fixture()
 def shim_bin(tmp_path: Path) -> Path:
@@ -58,7 +65,8 @@ def shim_bin(tmp_path: Path) -> Path:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in (
-        ("ssh", _SSH_SHIM), ("rsync", _RSYNC_SHIM), ("git", _GIT_SHIM), ("gh", _GH_SHIM)
+        ("ssh", _SSH_SHIM), ("rsync", _RSYNC_SHIM), ("git", _GIT_SHIM),
+        ("gh", _GH_SHIM), ("uv", _UV_SHIM),
     ):
         shim = bin_dir / name
         shim.write_text(body)
@@ -70,6 +78,9 @@ def run_wrapper(shim_bin: Path, tmp_path: Path, args: list[str], **env_overrides
     """Run the wrapper with shims on PATH. Returns (proc, call_log_text)."""
     call_log = tmp_path / "calls.log"
     env = dict(os.environ)
+    # Drop any BASH_ENV hook (e.g. mise's shell activation) — it re-prepends its
+    # own shims dir on bash startup, which would shadow our PATH shims (uv, etc.).
+    env.pop("BASH_ENV", None)
     env["PATH"] = f"{shim_bin}:{env['PATH']}"
     env["CALL_LOG"] = str(call_log)
     env.setdefault("FAKE_REPO_PATH", "/home/u/myrepo")
@@ -179,58 +190,50 @@ def test_passthrough_subcommand_skips_rsync(shim_bin, tmp_path):
     assert "forge status" in log
 
 
-_META = '{"head":"agent/feature","base":"main","title":"Add it","body":"Body."}'
-
-
-def test_promote_reads_metadata_then_writes_github(shim_bin, tmp_path):
-    proc, log = run_wrapper(
-        shim_bin, tmp_path, ["promote", "4"],
-        PR_META_JSON=_META,
-        GIT_HAS_REMOTE="1",
-        GIT_REMOTE_URL="http://tesseract:3000/cc_forge_admin/myrepo.git",
-    )
+@pytest.mark.parametrize("sub", ["promote", "promote-pr", "promote-issue"])
+def test_promote_family_delegates_to_local_forge(shim_bin, tmp_path, sub):
+    proc, log = run_wrapper(shim_bin, tmp_path, [sub], CC_FORGE_REPO=str(tmp_path))
     assert proc.returncode == 0, proc.stderr
-    # metadata read happens on the server, not locally
-    assert "forge pr-show 4 --repo-name myrepo" in log
-    # branch materialized + pushed to origin (GitHub) locally
-    assert "git branch -f agent/feature forgejo/agent/feature" in log
-    assert "git push origin agent/feature" in log
-    # GitHub PR opened with the carried metadata, no -R (inferred from origin)
-    assert "gh pr create --head agent/feature --base main --title Add it --body Body." in log
-    assert "-R" not in log
-    # the gh PR URL is surfaced on stdout
-    assert "https://github.com/me/myrepo/pull/9" in proc.stdout
-
-
-def test_promote_blocks_when_head_checked_out(shim_bin, tmp_path):
-    proc, log = run_wrapper(
-        shim_bin, tmp_path, ["promote", "4"],
-        PR_META_JSON=_META,
-        FAKE_CURRENT_BRANCH="agent/feature",
-    )
-    assert proc.returncode == 1
-    assert "checked out" in proc.stderr
-    assert "gh pr create" not in log  # never reached the GitHub write
-
-
-def test_promote_requires_pr_number(shim_bin, tmp_path):
-    proc, log = run_wrapper(shim_bin, tmp_path, ["promote"])
-    assert proc.returncode == 1
-    assert "usage" in proc.stderr
+    # Delegated to the local Python forge, pointed at the current repo.
+    assert f"uv run -- forge {sub} --repo /home/u/myrepo" in log
+    # Runs locally — no SSH round-trip, no server-side pr-show.
     assert "ssh" not in log
+    assert "pr-show" not in log
 
 
-def test_promote_fails_when_pr_show_fails(shim_bin, tmp_path):
+def test_promote_passes_number_through(shim_bin, tmp_path):
+    proc, log = run_wrapper(shim_bin, tmp_path, ["promote", "5"], CC_FORGE_REPO=str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    assert "uv run -- forge promote 5 --repo /home/u/myrepo" in log
+
+
+def test_promote_rejects_user_repo_flag(shim_bin, tmp_path):
+    # The wrapper sets --repo itself; a user-passed one would collide.
     proc, log = run_wrapper(
-        shim_bin, tmp_path, ["promote", "4"], PR_META_JSON=_META, SSH_PRSHOW_RC="1",
+        shim_bin, tmp_path, ["promote", "--repo", "/foo"], CC_FORGE_REPO=str(tmp_path)
     )
     assert proc.returncode == 1
-    assert "could not read PR 4" in proc.stderr
-    assert "gh pr create" not in log
+    assert "do not pass --repo" in proc.stderr
+    assert "uv run" not in log
 
 
-def test_promote_rejects_invalid_metadata(shim_bin, tmp_path):
-    proc, log = run_wrapper(shim_bin, tmp_path, ["promote", "4"], PR_META_JSON="not json")
+def test_promote_ensures_forgejo_remote(shim_bin, tmp_path):
+    # No forgejo remote yet → the wrapper adds one before delegating.
+    proc, log = run_wrapper(shim_bin, tmp_path, ["promote"], CC_FORGE_REPO=str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    assert "git remote add forgejo http://tesseract:3000/cc_forge_admin/myrepo.git" in log
+
+
+def test_promote_requires_git_repo(shim_bin, tmp_path):
+    proc, log = run_wrapper(shim_bin, tmp_path, ["promote"], GIT_TOPLEVEL_RC="1")
     assert proc.returncode == 1
-    assert "invalid PR metadata" in proc.stderr
-    assert "gh pr create" not in log
+    assert "not a git repository" in proc.stderr
+    assert "uv run" not in log
+
+
+def test_promote_requires_cc_forge_checkout(shim_bin, tmp_path):
+    missing = tmp_path / "nope"
+    proc, log = run_wrapper(shim_bin, tmp_path, ["promote"], CC_FORGE_REPO=str(missing))
+    assert proc.returncode == 1
+    assert "checkout not found" in proc.stderr
+    assert "uv run" not in log

@@ -1,14 +1,18 @@
 #!/bin/bash
 # Install as ~/.local/bin/forge on a workstation that wants to invoke forge against a
 # remote Forgejo server. For 'forge run' (the default), the current repo is rsynced to
-# the server first; other subcommands pass straight through.
+# the server first. The 'promote' family runs locally against the LAN Forgejo (see
+# below); all other subcommands pass straight through over SSH.
 #
 # Requires:
 # - SSH access to the server (default alias "tesseract" in ~/.ssh/config)
 # - Server-side forge installed (see scripts/remote-forge/server-wrapper)
 # - Server hostname resolvable for Forgejo web UI (see docs/WORKSTATION-SETUP.md)
+# - For promote: a local cc_forge checkout (CC_FORGE_REPO, default ~/Code/cc_forge),
+#   uv, gh auth, and FORGE_FORGEJO_URL/TOKEN in ~/.config/forge/config.env
 #
-# Override defaults via env vars: FORGE_SERVER, FORGE_FORGEJO_USER, FORGE_FORGEJO_PORT.
+# Override defaults via env vars: FORGE_SERVER, FORGE_FORGEJO_USER, FORGE_FORGEJO_PORT,
+# CC_FORGE_REPO.
 #
 # Interim setup for issue #42. Remove when forge learns to talk to a remote Forgejo.
 
@@ -73,65 +77,47 @@ if [ "$SUBCMD" = "run" ]; then
     else
         echo "forge: could not fetch from Forgejo (is $FORGE_SERVER:$FORGE_FORGEJO_PORT reachable?)" >&2
     fi
-elif [ "$SUBCMD" = "promote" ]; then
-    # Split across the host boundary: the server reads its local Forgejo (it has the
-    # token); the workstation does the GitHub write with its own ambient gh auth.
+elif [ "$SUBCMD" = "promote" ] || [ "$SUBCMD" = "promote-pr" ] || [ "$SUBCMD" = "promote-issue" ]; then
+    # The promote hub runs locally on the workstation: it reads the LAN Forgejo
+    # (FORGE_FORGEJO_URL/TOKEN in config.env) and writes GitHub with your own gh
+    # auth. No SSH round-trip — that split was interim scaffolding.
+    command -v uv >/dev/null || {
+        echo "forge: uv is required to run '$SUBCMD' on the workstation" >&2; exit 1; }
+    command -v gh >/dev/null || {
+        echo "forge: gh CLI is required for '$SUBCMD' (https://cli.github.com)" >&2; exit 1; }
+
+    # This wrapper sets --repo to the current repo; a second --repo would collide.
+    for a in "$@"; do
+        case "$a" in
+            --repo|--repo=*)
+                echo "forge: this wrapper targets the current repo; do not pass --repo yourself" >&2
+                exit 1
+                ;;
+        esac
+    done
+
+    USER_REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
+        echo "forge: not a git repository" >&2; exit 1; }
+    CC_FORGE_REPO="${CC_FORGE_REPO:-$HOME/Code/cc_forge}"
+    if [ ! -d "$CC_FORGE_REPO" ]; then
+        echo "forge: cc_forge checkout not found (set CC_FORGE_REPO)" >&2; exit 1
+    fi
+
+    # Ensure the 'forgejo' remote on the target repo so promote-pr can fetch the
+    # agent's branch (same URL scheme the run path sets up).
     FORGE_SERVER="${FORGE_SERVER:-tesseract}"
     FORGE_FORGEJO_USER="${FORGE_FORGEJO_USER:-cc_forge_admin}"
     FORGE_FORGEJO_PORT="${FORGE_FORGEJO_PORT:-3000}"
-
-    # promote does its GitHub write locally; both tools are required on the workstation.
-    command -v python3 >/dev/null || {
-        echo "forge: python3 is required for 'forge promote' on the workstation" >&2; exit 1; }
-    command -v gh >/dev/null || {
-        echo "forge: gh CLI is required for 'forge promote' (https://cli.github.com)" >&2; exit 1; }
-
-    PR_NUM="$1"
-    [ -n "$PR_NUM" ] || { echo "forge: usage: forge promote <pr-number>" >&2; exit 1; }
-
-    REPO_PATH=$(git rev-parse --show-toplevel 2>/dev/null) || {
-        echo "forge: not a git repository" >&2; exit 1; }
-    REPO=$(basename "$REPO_PATH")
-
-    # 1. Read PR metadata from the server (reads its local Forgejo).
-    META=$(ssh "$FORGE_SERVER" "forge pr-show $(printf %q "$PR_NUM") --repo-name $(printf %q "$REPO")") || {
-        echo "forge: could not read PR $PR_NUM from $FORGE_SERVER" >&2; exit 1; }
-    # Parse once: NUL-delimited fields survive multi-line titles/bodies, and a bad
-    # payload (invalid JSON or missing keys) becomes a clean error, not a traceback.
-    # The inner python3's exit status isn't visible through process substitution, so
-    # validate by field count: a bad payload yields fewer than 4 NUL-delimited fields.
-    mapfile -d '' -t FIELDS < <(printf '%s' "$META" | python3 -c '
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    for k in ("head", "base", "title", "body"):
-        sys.stdout.write(d[k]); sys.stdout.write("\0")
-except Exception:
-    sys.exit(1)
-')
-    [ "${#FIELDS[@]}" -eq 4 ] || {
-        echo "forge: invalid PR metadata from server: $META" >&2; exit 1; }
-    HEAD="${FIELDS[0]}"; BASE="${FIELDS[1]}"; TITLE="${FIELDS[2]}"; BODY="${FIELDS[3]}"
-
-    # 2. Can't reset a checked-out branch.
-    if [ "$(git rev-parse --abbrev-ref HEAD)" = "$HEAD" ]; then
-        echo "forge: branch '$HEAD' is checked out; switch away before promoting" >&2; exit 1
-    fi
-
-    # 3. Ensure the forgejo remote, fetch the agent's branch (read-only).
-    FORGEJO_URL="http://${FORGE_SERVER}:${FORGE_FORGEJO_PORT}/${FORGE_FORGEJO_USER}/${REPO}.git"
+    FORGEJO_URL="http://${FORGE_SERVER}:${FORGE_FORGEJO_PORT}/${FORGE_FORGEJO_USER}/$(basename "$USER_REPO").git"
     if ! CURRENT_URL=$(git remote get-url forgejo 2>/dev/null); then
         git remote add forgejo "$FORGEJO_URL"
     elif [ "$CURRENT_URL" != "$FORGEJO_URL" ]; then
         git remote set-url forgejo "$FORGEJO_URL"
     fi
-    git fetch forgejo >&2
 
-    # 4. Materialize the branch and open the GitHub PR with the workstation's gh
-    #    (no -R: gh infers the repo from origin, so no FORGE_GITHUB_* config is needed here).
-    git branch -f "$HEAD" "forgejo/$HEAD"
-    git push origin "$HEAD" >&2
-    gh pr create --head "$HEAD" --base "$BASE" --title "$TITLE" --body "$BODY"
+    # Delegate to the real Python forge (run from the cc_forge checkout via uv),
+    # pointed at this repo. It does the read/write, dedup lock, and walk itself.
+    cd "$CC_FORGE_REPO" && exec uv run -- forge "$SUBCMD" "$@" --repo "$USER_REPO"
 else
     FORGE_SERVER="${FORGE_SERVER:-tesseract}"
     exec ssh -t "$FORGE_SERVER" "forge $(printf %q "$SUBCMD") $(q "$@")"
