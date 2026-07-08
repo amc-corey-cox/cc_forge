@@ -53,6 +53,22 @@ The agent session runs as it always did. You can review the agent's work at
 `http://tesseract:3000` from the workstation's browser, and the agent's
 branches are available locally via `git branch -r | grep forgejo/`.
 
+## Promoting to GitHub
+
+Unlike `run`, the promote family (`forge promote`, `promote-pr`, `promote-issue`)
+runs **locally** on the workstation — it reads the LAN Forgejo directly and writes
+GitHub with your own `gh` auth, no SSH round-trip. It needs a local cc_forge
+checkout (`CC_FORGE_REPO`, default `~/Code/cc_forge`), `uv`, `gh` authenticated
+for the destination, and a `~/.config/forge/config.env` pointing at Forgejo:
+
+```
+FORGE_FORGEJO_URL=http://tesseract:3000
+FORGE_FORGEJO_TOKEN=<token: read:user, read/write:repository, read/write:issue>
+```
+
+Then, from the repo: `forge promote` walks the open Forgejo issues and PRs and
+lets you promote each; `forge promote <number>` promotes one directly.
+
 ## Limitations
 
 - The agent works on the server-side rsync'd copy. Local uncommitted changes
@@ -61,8 +77,8 @@ branches are available locally via `git branch -r | grep forgejo/`.
 - Override the server hostname, Forgejo user, or port via env vars:
   `FORGE_SERVER`, `FORGE_FORGEJO_USER`, `FORGE_FORGEJO_PORT` (defaults:
   `tesseract`, `cc_forge_admin`, `3000`).
-- Workstation `~/.config/forge/config.env` is intentionally absent — the
-  workstation wrapper does not run forge locally, so it does not read config.
+- The workstation reads `~/.config/forge/config.env` for the promote family
+  (Forgejo URL + token); `run` and other subcommands still execute server-side.
 
 ## Removal
 
