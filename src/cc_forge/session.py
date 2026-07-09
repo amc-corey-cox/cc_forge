@@ -6,13 +6,13 @@ from pathlib import Path
 
 import click
 
+from cc_forge.agents import AgentAdapter
 from cc_forge.config import ForgeConfig
 from cc_forge.docker import (
     cleanup_container,
     ensure_infrastructure_running,
     exec_agent,
     run_agent_container,
-    save_claude_credentials,
 )
 
 from cc_forge.forgejo import ForgejoClient
@@ -32,9 +32,10 @@ from cc_forge.git import (
 
 def start_session(
     config: ForgeConfig,
-    repo_path: str = ".",
-    agent: str = "claude",
-    claude_passthrough: bool = False,
+    repo_path: str,
+    agent: str,
+    adapter: AgentAdapter,
+    passthrough: bool = False,
 ) -> None:
     """Run the full forge session flow."""
     path = Path(repo_path).resolve()
@@ -94,7 +95,7 @@ def start_session(
                     click.echo("Warning: could not restore forgejo remote URL.", err=True)
 
     # 7. Launch agent container
-    backend = "Claude API" if claude_passthrough and agent == "claude" else "local Ollama"
+    backend = "API pass-through" if passthrough else "local Ollama"
     click.echo(f"Starting {agent} agent container ({backend})...")
     container_id = run_agent_container(
         config,
@@ -102,20 +103,17 @@ def start_session(
         branch=branch,
         repo_name=repo_name,
         agent=agent,
-        claude_passthrough=claude_passthrough,
+        adapter=adapter,
+        passthrough=passthrough,
     )
     click.echo(f"Container started. Launching {agent}...")
     click.echo("---")
 
     # 8. Exec agent interactively and wait
     try:
-        exec_agent(container_id, agent, config, claude_passthrough=claude_passthrough)
+        exec_agent(container_id, adapter, config, passthrough=passthrough)
     finally:
-        if claude_passthrough and not config.claude_api_key:
-            try:
-                save_claude_credentials(container_id)
-            except Exception as e:
-                click.echo(f"Warning: failed to save Claude state: {e}", err=True)
+        adapter.save_state(container_id, config, passthrough)
         click.echo("\n--- Session ended. Cleaning up container...")
         cleanup_container(container_id)
 
