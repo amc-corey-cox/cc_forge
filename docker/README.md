@@ -46,8 +46,8 @@ Forwards container traffic to host Ollama GPU/Vulkan service (port 11435).
 
 ### `forge-runner` — CI Runner (Forgejo Actions)
 
-Runs `.forgejo/workflows/` on pull requests targeting `main` (and pushes to `main`), so
-agent PRs get the same CI they'd hit on GitHub. See [CI (Forgejo Actions)](#ci-forgejo-actions)
+Runs your existing `.github/workflows/ci.yml` on pull requests targeting `main` (and pushes
+to `main`), so agent PRs get the same CI they'd hit on GitHub. See [CI (Forgejo Actions)](#ci-forgejo-actions)
 below for setup.
 
 ## Quick Start
@@ -93,11 +93,14 @@ internet access; egress restrictions are planned for Phase 2.
 
 ## CI (Forgejo Actions)
 
-Forgejo Actions runs `.forgejo/workflows/ci.yml` (a near-verbatim mirror of the GitHub
-Actions workflow) on every pull request targeting `main`, and on pushes to `main` itself.
-A feature-branch push alone doesn't trigger CI — the PR is the gate. This gives agent PRs
-the same test gate they'd get on GitHub, and makes CI/PR events the entry point for future
-review agents.
+Forgejo also reads `.github/workflows`, so it runs your existing `.github/workflows/ci.yml` —
+one workflow for both systems, no separate Forgejo copy to maintain. It runs on every pull
+request targeting `main`, and on pushes to `main` itself; a feature-branch push alone doesn't
+trigger CI — the PR is the gate. This gives agent PRs the same test gate they'd get on GitHub,
+and makes CI/PR events the entry point for future review agents.
+
+The workflow used for a PR is read from the *base* branch, so `.github/workflows/ci.yml` must
+be on Forgejo `main` for PRs to be gated (it already is, mirrored from GitHub).
 
 ### Trust boundary
 
@@ -109,27 +112,33 @@ and it stays isolated on `forge-network`. Job containers it spawns are unprivile
 
 ### First-time runner registration
 
-The daemon needs a registered `/data/.runner` file before it will start. On the Forgejo host,
-generate a registration token (Forgejo → Site Administration → Actions → Runners, or the CLI),
-then register once into the `runner-data` volume:
+The daemon needs a registered `/data/.runner` file before it will start. Generate a
+registration token, then register once into the `runner-data` volume. Generate the token as
+the `git` user — Forgejo refuses to run its CLI as root:
 
 ```bash
+TOKEN=$(docker exec -u git forge-forgejo forgejo actions generate-runner-token)
+
 docker compose run --rm --entrypoint forgejo-runner runner \
   register --no-interactive \
   --instance http://forge-forgejo:3000 \
-  --token <REGISTRATION_TOKEN> \
+  --token "$TOKEN" \
   --name forge-runner \
   --labels "ubuntu-latest:docker://catthehacker/ubuntu:act-latest"
 
 docker compose up -d runner
 ```
 
+The runner needs the host's `docker` group to use the mounted socket — set `FORGE_DOCKER_GID`
+in `docker/.env` to the host's `getent group docker` gid if it differs from the default.
 Enabling Actions on Forgejo restarts the `forge-forgejo` container, so do this when no agent
 session is running.
 
-### Known gotcha: clone URL
+### Addressing: ROOT_URL vs. the runner's clone URL
 
-Job containers clone via Forgejo's `ROOT_URL`. If that resolves to `localhost` or a LAN
-hostname the job container can't reach, checkout fails — the containers share `forge-network`
-and reach Forgejo as `forge-forgejo:3000`. Expect to reconcile `ROOT_URL` (or the runner's
-fetch URL) with what a job container can actually resolve when bringing the runner up.
+Two Forgejo addresses matter, and they're separate. Job containers clone via the runner's
+registered `--instance` URL (`http://forge-forgejo:3000`) — they share `forge-network` and
+reach Forgejo by that container name, so checkout works regardless of `ROOT_URL`. `ROOT_URL`
+(set via `FORGE_FORGEJO_ROOT_URL` in `docker/.env`) only governs the links Forgejo shows
+humans; point it at the host's name so browsing from other devices isn't redirected to
+`localhost`.
