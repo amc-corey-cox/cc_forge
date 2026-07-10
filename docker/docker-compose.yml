@@ -42,6 +42,10 @@ services:
     image: code.forgejo.org/forgejo/runner:6.3.1
     container_name: forge-runner
     restart: unless-stopped
+    # Join the host's docker group so the runner can use the mounted docker.sock.
+    # Must match `getent group docker` on the host; setup automation (#98) can auto-detect.
+    group_add:
+      - "${FORGE_DOCKER_GID:-983}"
     depends_on:
       - forgejo
     volumes:
