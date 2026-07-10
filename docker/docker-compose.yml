@@ -6,6 +6,10 @@ services:
     image: codeberg.org/forgejo/forgejo:14
     container_name: forge-forgejo
     restart: unless-stopped
+    environment:
+      # Enable Forgejo Actions and resolve `uses:` actions (checkout, setup-uv) from github.com.
+      FORGEJO__actions__ENABLED: "true"
+      FORGEJO__actions__DEFAULT_ACTIONS_URL: "github"
     volumes:
       - forgejo-data:/data
     ports:
@@ -34,6 +38,25 @@ services:
     networks:
       - forge-network
 
+  runner:
+    image: code.forgejo.org/forgejo/runner:6.3.1
+    container_name: forge-runner
+    restart: unless-stopped
+    depends_on:
+      - forgejo
+    volumes:
+      - runner-data:/data
+      # Host Docker socket: the runner spawns job containers via the host daemon.
+      # Deliberate, accepted trade-off — see "CI Runner" in README.md.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./forgejo-runner/config.yaml:/etc/forgejo-runner/config.yaml:ro
+    networks:
+      - forge-network
+    # The daemon needs a registered /data/.runner file; register once before `up`
+    # (server step — see README.md). Working dir is /data so it finds .runner.
+    working_dir: /data
+    command: forgejo-runner daemon --config /etc/forgejo-runner/config.yaml
+
 networks:
   forge-network:
     name: forge-network
@@ -41,3 +64,4 @@ networks:
 
 volumes:
   forgejo-data:
+  runner-data:
