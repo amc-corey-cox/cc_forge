@@ -62,6 +62,10 @@ docker compose ps
 
 Then open `http://localhost:3000` to set up Forgejo (create admin, generate API token).
 
+> **Note:** `docker compose up -d` also starts the `forge-runner` service, which will restart
+> until it's registered — see [First-time runner registration](#first-time-runner-registration).
+> Automating this bootstrap (so the runner self-registers) is tracked in #98.
+
 ## Agent Container
 
 The agent container (`Dockerfile.agent`) is built and managed by the `forge` CLI. It:
