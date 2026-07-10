@@ -25,13 +25,15 @@ def _find_compose_file() -> str:
     return ""
 
 
+AGENT_MODEL_DEFAULT = "qwen3-coder-32k"
+
 _DEFAULTS = {
     "FORGE_FORGEJO_URL": "http://localhost:3000",
     "FORGE_FORGEJO_TOKEN": "",
     "FORGE_OLLAMA_CPU_URL": "http://localhost:11434",
     "FORGE_OLLAMA_GPU_URL": "http://localhost:11435",
     "FORGE_AGENT_IMAGE": "cc-forge-agent:latest",
-    "FORGE_AGENT_MODEL": "qwen3-coder-32k",
+    "FORGE_AGENT_MODEL": AGENT_MODEL_DEFAULT,
     "FORGE_AGENT_API_KEY": "",
     "FORGE_COMPOSE_FILE": "",
     "FORGE_GITHUB_TOKEN": "",

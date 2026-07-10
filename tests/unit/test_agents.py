@@ -7,7 +7,7 @@ from cc_forge.agents import (
     AiderAdapter,
     ClaudeAdapter,
 )
-from cc_forge.config import ForgeConfig
+from cc_forge.config import AGENT_MODEL_DEFAULT, ForgeConfig
 
 
 def _make_config(**kwargs) -> ForgeConfig:
@@ -45,6 +45,11 @@ class TestClaudeAdapter:
 
     def test_build_cmd_ollama(self):
         config = _make_config(agent_model="qwen3-coder-32k")
+        cmd = self.adapter.build_cmd(config, passthrough=False)
+        assert cmd == ["claude", "--dangerously-skip-permissions", "--model", "qwen3-coder-32k"]
+
+    def test_build_cmd_default_model(self):
+        config = _make_config(agent_model=AGENT_MODEL_DEFAULT)
         cmd = self.adapter.build_cmd(config, passthrough=False)
         assert cmd == ["claude", "--dangerously-skip-permissions", "--model", "qwen3-coder-32k"]
 
@@ -87,6 +92,11 @@ class TestAiderAdapter:
         config = _make_config(agent_model="ollama/deepseek-coder")
         cmd = self.adapter.build_cmd(config, passthrough=False)
         assert cmd == ["aider", "--model", "ollama/deepseek-coder"]
+
+    def test_build_cmd_default_model(self):
+        config = _make_config(agent_model=AGENT_MODEL_DEFAULT)
+        cmd = self.adapter.build_cmd(config, passthrough=False)
+        assert cmd == ["aider", "--model", "ollama/qwen3-coder-32k"]
 
     def test_container_env_is_ollama(self):
         config = _make_config()

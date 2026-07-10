@@ -28,6 +28,14 @@ class AgentAdapter(ABC):
     """Interface that each agent harness must implement."""
 
     supports_passthrough: bool = False
+    default_model: str = ""
+
+    def _model(self, config: ForgeConfig) -> str:
+        """Return the model to use: config value if explicitly set, else adapter default."""
+        from cc_forge.config import AGENT_MODEL_DEFAULT
+        if config.agent_model != AGENT_MODEL_DEFAULT or not self.default_model:
+            return config.agent_model
+        return self.default_model
 
     @abstractmethod
     def build_cmd(self, config: ForgeConfig, passthrough: bool) -> list[str]:
@@ -242,11 +250,12 @@ class ClaudeAdapter(AgentAdapter):
     """Adapter for Claude Code agent."""
 
     supports_passthrough = True
+    default_model = "qwen3-coder-32k"
 
     def build_cmd(self, config: ForgeConfig, passthrough: bool) -> list[str]:
         cmd = ["claude", "--dangerously-skip-permissions"]
         if not passthrough:
-            cmd += ["--model", config.agent_model]
+            cmd += ["--model", self._model(config)]
         return cmd
 
     def container_env(self, config: ForgeConfig, passthrough: bool) -> dict[str, str]:
@@ -274,9 +283,10 @@ class AiderAdapter(AgentAdapter):
     """Adapter for Aider agent."""
 
     supports_passthrough = False
+    default_model = "ollama/qwen3-coder-32k"
 
     def build_cmd(self, config: ForgeConfig, passthrough: bool) -> list[str]:
-        return ["aider", "--model", config.agent_model]
+        return ["aider", "--model", self._model(config)]
 
     def container_env(self, config: ForgeConfig, passthrough: bool) -> dict[str, str]:
         return _ollama_environment(config)
