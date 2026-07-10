@@ -21,7 +21,7 @@ def main(ctx: click.Context) -> None:
 
 
 def _agent_choices() -> list[str]:
-    """Return registered agent names (deferred import to avoid circular deps)."""
+    """Return registered agent names."""
     from cc_forge.agents import REGISTRY
     return list(REGISTRY.keys())
 
