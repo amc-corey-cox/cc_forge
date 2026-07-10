@@ -10,6 +10,12 @@ services:
       # Enable Forgejo Actions and resolve `uses:` actions (checkout, setup-uv) from github.com.
       FORGEJO__actions__ENABLED: "true"
       FORGEJO__actions__DEFAULT_ACTIONS_URL: "github"
+      # Public address Forgejo builds links/redirects from. Defaults to localhost for a
+      # single-host setup; set FORGE_FORGEJO_ROOT_URL/FORGE_FORGEJO_DOMAIN in docker/.env
+      # (gitignored) when reaching Forgejo from other devices, or links point to localhost.
+      FORGEJO__server__ROOT_URL: "${FORGE_FORGEJO_ROOT_URL:-http://localhost:3000/}"
+      FORGEJO__server__DOMAIN: "${FORGE_FORGEJO_DOMAIN:-localhost}"
+      FORGEJO__server__SSH_DOMAIN: "${FORGE_FORGEJO_DOMAIN:-localhost}"
     volumes:
       - forgejo-data:/data
     ports:
