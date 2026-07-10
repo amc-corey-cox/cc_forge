@@ -46,8 +46,9 @@ Forwards container traffic to host Ollama GPU/Vulkan service (port 11435).
 
 ### `forge-runner` — CI Runner (Forgejo Actions)
 
-Runs `.forgejo/workflows/` on push and PR, so agent PRs get the same CI they'd hit on
-GitHub. See [CI (Forgejo Actions)](#ci-forgejo-actions) below for setup.
+Runs `.forgejo/workflows/` on pull requests targeting `main` (and pushes to `main`), so
+agent PRs get the same CI they'd hit on GitHub. See [CI (Forgejo Actions)](#ci-forgejo-actions)
+below for setup.
 
 ## Quick Start
 
@@ -89,8 +90,9 @@ internet access; egress restrictions are planned for Phase 2.
 ## CI (Forgejo Actions)
 
 Forgejo Actions runs `.forgejo/workflows/ci.yml` (a near-verbatim mirror of the GitHub
-Actions workflow) whenever a branch is pushed or a PR is opened. This gives agent PRs the
-same test gate they'd get on GitHub — and makes CI/PR events the entry point for future
+Actions workflow) on every pull request targeting `main`, and on pushes to `main` itself.
+A feature-branch push alone doesn't trigger CI — the PR is the gate. This gives agent PRs
+the same test gate they'd get on GitHub, and makes CI/PR events the entry point for future
 review agents.
 
 ### Trust boundary
@@ -110,7 +112,7 @@ then register once into the `runner-data` volume:
 ```bash
 docker compose run --rm --entrypoint forgejo-runner runner \
   register --no-interactive \
-  --instance http://forgejo:3000 \
+  --instance http://forge-forgejo:3000 \
   --token <REGISTRATION_TOKEN> \
   --name forge-runner \
   --labels "ubuntu-latest:docker://catthehacker/ubuntu:act-latest"
