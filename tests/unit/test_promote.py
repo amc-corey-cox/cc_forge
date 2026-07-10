@@ -127,6 +127,13 @@ def test_promote_errors_when_not_git_repo(monkeypatch):
         promote_mod.promote_pull_request(_config(), 7, repo_path="/repo")
 
 
+def test_promote_errors_without_github_repo_config(monkeypatch):
+    _wire(monkeypatch)
+    cfg = _config(github_owner="", github_repo="")
+    with pytest.raises(click.ClickException, match="Cannot resolve GitHub repo"):
+        promote_mod.promote_pull_request(cfg, 7, repo_path="/repo")
+
+
 def test_promote_errors_when_head_checked_out(monkeypatch):
     _wire(monkeypatch, current_branch="agent/feature")
     with pytest.raises(click.ClickException, match="currently checked out"):
