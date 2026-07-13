@@ -52,7 +52,9 @@ below for setup.
 
 ## Quick Start
 
-Run these from the `docker/` directory (there's no top-level compose file):
+Run these from the `docker/` directory (there's no top-level compose file). First set
+`FORGE_DOCKER_GID` in `docker/.env` — the `runner` service requires it (see
+[CI (Forgejo Actions)](#ci-forgejo-actions)), so `docker compose` errors without it:
 
 ```bash
 # Start infrastructure
