@@ -5,18 +5,30 @@
 # /usr/local/bin/gh so that `gh pr create`, `gh issue view`, etc. translate
 # to the right backend instead of failing.
 #
-# Routing rules:
-#   pr create ............... Forgejo workspace (writes; -R/--repo is rejected)
-#   pr view <N> ............. Forgejo workspace (default), or GitHub if -R given
-#   issue view, issue list .. GitHub always; -R picks the specific GitHub repo
+# Unified number-space (offset model):
+#   FORGEJO_OFFSET=10000
+#   N > 10000  → Forgejo (subtract offset for real number)
+#   N <= 10000 → GitHub first; fall back to Forgejo if GitHub 404s/missing
+#   -R given   → explicit GitHub, no offset, no fallback
 #
-# Without -R, GitHub-bound commands resolve their target from
-# $FORGE_GITHUB_REPO (override) or $FORGE_GITHUB_OWNER + workspace basename.
+# Supported commands:
+#   pr create .......... Forgejo workspace (writes; -R rejected)
+#   pr view <N> ........ offset-routed
+#   pr list ............ merged listing (both backends)
+#   pr checks <N> ...... offset-routed (PR → SHA → statuses)
+#   pr diff <N> ........ offset-routed (raw diff text)
+#   issue view <N> ..... offset-routed
+#   issue list ......... merged listing (both backends)
+#   repo view .......... Forgejo default, GitHub with -R
 #
-# Output is the raw underlying API's JSON response. Anything outside the
-# allowlist exits with a clear message naming what's supported.
+# Output is the raw underlying API's JSON response (except pr diff which
+# returns raw diff text). Anything outside the allowlist exits with a clear
+# message naming what's supported.
 
 set -euo pipefail
+
+FORGEJO_OFFSET=10000
+SUPPORTED_COMMANDS="pr create, pr view, pr list, pr checks, pr diff, issue view, issue list, repo view"
 
 die() {
     echo "gh: $*" >&2
@@ -101,6 +113,57 @@ github_get() {
         "https://api.github.com/$path"
 }
 
+# ---- Helpers for offset routing and fallback ----
+
+has_github_creds() {
+    [ -n "${FORGE_GITHUB_TOKEN:-}" ]
+}
+
+has_forgejo_creds() {
+    [ -n "${FORGEJO_URL:-}" ] && [ -n "${FORGEJO_TOKEN:-}" ]
+}
+
+# Like github_get but returns empty string on any error (for fallback logic).
+github_get_or_empty() {
+    local path="$1"
+    curl -sSf \
+        -H "Authorization: token $FORGE_GITHUB_TOKEN" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/$path" 2>/dev/null || true
+}
+
+# Fetch raw content from Forgejo web endpoint (no /api/v1/ prefix).
+forgejo_get_raw() {
+    local path="$1"
+    curl -sSf \
+        -H "Authorization: token $FORGEJO_TOKEN" \
+        "$FORGEJO_URL/$path"
+}
+
+# Fetch diff from GitHub using the diff Accept header.
+github_get_diff() {
+    local path="$1"
+    curl -sSf \
+        -H "Authorization: token $FORGE_GITHUB_TOKEN" \
+        -H "Accept: application/vnd.github.v3.diff" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/$path"
+}
+
+is_forgejo_number() {
+    [ "$1" -gt "$FORGEJO_OFFSET" ] 2>/dev/null
+}
+
+real_forgejo_number() {
+    echo $(( $1 - FORGEJO_OFFSET ))
+}
+
+# Pipe filter: add offset to .number in a single JSON object.
+apply_offset() {
+    jq ".number += $FORGEJO_OFFSET"
+}
+
 # Strip -R/--repo (and the =value forms) from args into the dash_R variable,
 # leaving non-flag args in the positional array. Used by read subcommands.
 # Caller must declare `dash_R` and `positional` as local before calling.
@@ -126,6 +189,30 @@ parse_dash_R() {
     done
 }
 
+# Strip flags that agents commonly pass but the shim ignores (--json, --jq, -q).
+# Operates on the `positional` array set by parse_dash_R.
+strip_ignored_flags() {
+    local filtered=()
+    local i=0
+    while [ $i -lt ${#positional[@]} ]; do
+        case "${positional[$i]}" in
+            --json|--jq)
+                # These take a following value — skip it too.
+                i=$(( i + 2 )) ;;
+            --json=*|--jq=*)
+                i=$(( i + 1 )) ;;
+            -q)
+                i=$(( i + 1 )) ;;
+            *)
+                filtered+=("${positional[$i]}")
+                i=$(( i + 1 )) ;;
+        esac
+    done
+    positional=("${filtered[@]+"${filtered[@]}"}")
+}
+
+# ---- Commands ----
+
 cmd_pr_create() {
     # Writes never target GitHub.
     for arg in "$@"; do
@@ -146,7 +233,13 @@ cmd_pr_create() {
         esac
     done
     [ -n "$title" ] || die "--title is required for 'pr create'"
-    [ -n "$head" ]  || die "--head is required for 'pr create'"
+
+    # Auto-detect --head from current branch if not provided.
+    if [ -z "$head" ]; then
+        head=$(git -C "$WORKSPACE" branch --show-current 2>/dev/null) \
+            || die "could not detect current branch for --head (detached HEAD?)"
+        [ -n "$head" ] || die "could not detect current branch for --head (detached HEAD?)"
+    fi
 
     local owner_repo payload
     owner_repo=$(detect_forgejo_repo)
@@ -156,72 +249,291 @@ cmd_pr_create() {
         --arg base "$base" \
         --arg body "$body" \
         '{title: $title, head: $head, base: $base, body: $body}')
-    forgejo_post "repos/$owner_repo/pulls" "$payload"
+    forgejo_post "repos/$owner_repo/pulls" "$payload" | apply_offset
 }
 
 cmd_pr_view() {
     local dash_R; local positional
     parse_dash_R "$@"
+    strip_ignored_flags
     set -- "${positional[@]+"${positional[@]}"}"
     [ $# -eq 1 ] || die "'pr view' takes exactly one argument (the PR number)"
     if [ -n "$dash_R" ]; then
-        # -R given → GitHub upstream lookup
+        # -R given → explicit GitHub, no offset
         require_github_env
         github_get "repos/$dash_R/pulls/$1"
+    elif is_forgejo_number "$1"; then
+        # N > 10000 → Forgejo directly
+        require_forgejo_env
+        local owner_repo real_n
+        owner_repo=$(detect_forgejo_repo)
+        real_n=$(real_forgejo_number "$1")
+        forgejo_get "repos/$owner_repo/pulls/$real_n" | apply_offset
+    elif has_github_creds; then
+        # Try GitHub first
+        local response target
+        target=$(detect_github_repo 2>/dev/null) || target=""
+        if [ -n "$target" ]; then
+            response=$(github_get_or_empty "repos/$target/pulls/$1")
+        fi
+        if [ -n "${response:-}" ]; then
+            echo "$response"
+        elif has_forgejo_creds; then
+            local owner_repo
+            owner_repo=$(detect_forgejo_repo)
+            forgejo_get "repos/$owner_repo/pulls/$1" | apply_offset
+        else
+            die "PR $1 not found on GitHub and Forgejo credentials not configured"
+        fi
     else
-        # Default → Forgejo workspace
+        # No GitHub creds → Forgejo only
         require_forgejo_env
         local owner_repo
         owner_repo=$(detect_forgejo_repo)
-        forgejo_get "repos/$owner_repo/pulls/$1"
+        forgejo_get "repos/$owner_repo/pulls/$1" | apply_offset
+    fi
+}
+
+cmd_pr_list() {
+    local dash_R; local positional
+    parse_dash_R "$@"
+    strip_ignored_flags
+    set -- "${positional[@]+"${positional[@]}"}"
+    [ $# -eq 0 ] || die "'pr list' takes no arguments"
+    if [ -n "$dash_R" ]; then
+        require_github_env
+        github_get "repos/$dash_R/pulls?state=open"
+    else
+        local gh_json="" fj_json=""
+        if has_github_creds; then
+            local target
+            target=$(detect_github_repo 2>/dev/null) || target=""
+            if [ -n "$target" ]; then
+                gh_json=$(github_get_or_empty "repos/$target/pulls?state=open")
+            fi
+        fi
+        if has_forgejo_creds; then
+            local owner_repo
+            owner_repo=$(detect_forgejo_repo)
+            fj_json=$(forgejo_get "repos/$owner_repo/pulls?state=open" 2>/dev/null || true)
+        fi
+        if [ -z "$gh_json" ] && [ -z "$fj_json" ]; then
+            die "no credentials configured for either GitHub or Forgejo"
+        fi
+        # Merge: tag with _source, apply offset to Forgejo items
+        local gh_tagged fj_tagged
+        gh_tagged=$(echo "${gh_json:-[]}" | jq '[.[]? | . + {_source: "github"}]' 2>/dev/null || echo '[]')
+        fj_tagged=$(echo "${fj_json:-[]}" | jq "[.[]? | .number += $FORGEJO_OFFSET | . + {_source: \"forgejo\"}]" 2>/dev/null || echo '[]')
+        jq -nc --argjson gh "$gh_tagged" --argjson fj "$fj_tagged" '$gh + $fj'
+    fi
+}
+
+cmd_pr_checks() {
+    local dash_R; local positional
+    parse_dash_R "$@"
+    strip_ignored_flags
+    set -- "${positional[@]+"${positional[@]}"}"
+    [ $# -eq 1 ] || die "'pr checks' takes exactly one argument (the PR number)"
+    local pr_json sha
+    if [ -n "$dash_R" ]; then
+        require_github_env
+        pr_json=$(github_get "repos/$dash_R/pulls/$1")
+        sha=$(echo "$pr_json" | jq -r '.head.sha')
+        github_get "repos/$dash_R/commits/$sha/check-runs"
+    elif is_forgejo_number "$1"; then
+        require_forgejo_env
+        local owner_repo real_n
+        owner_repo=$(detect_forgejo_repo)
+        real_n=$(real_forgejo_number "$1")
+        pr_json=$(forgejo_get "repos/$owner_repo/pulls/$real_n")
+        sha=$(echo "$pr_json" | jq -r '.head.sha')
+        forgejo_get "repos/$owner_repo/commits/$sha/statuses"
+    elif has_github_creds; then
+        local target
+        target=$(detect_github_repo 2>/dev/null) || target=""
+        if [ -n "$target" ]; then
+            pr_json=$(github_get_or_empty "repos/$target/pulls/$1")
+        fi
+        if [ -n "${pr_json:-}" ]; then
+            sha=$(echo "$pr_json" | jq -r '.head.sha')
+            github_get "repos/$target/commits/$sha/check-runs"
+        elif has_forgejo_creds; then
+            local owner_repo
+            owner_repo=$(detect_forgejo_repo)
+            pr_json=$(forgejo_get "repos/$owner_repo/pulls/$1")
+            sha=$(echo "$pr_json" | jq -r '.head.sha')
+            forgejo_get "repos/$owner_repo/commits/$sha/statuses"
+        else
+            die "PR $1 not found on GitHub and Forgejo credentials not configured"
+        fi
+    else
+        require_forgejo_env
+        local owner_repo
+        owner_repo=$(detect_forgejo_repo)
+        pr_json=$(forgejo_get "repos/$owner_repo/pulls/$1")
+        sha=$(echo "$pr_json" | jq -r '.head.sha')
+        forgejo_get "repos/$owner_repo/commits/$sha/statuses"
+    fi
+}
+
+cmd_pr_diff() {
+    local dash_R; local positional
+    parse_dash_R "$@"
+    strip_ignored_flags
+    set -- "${positional[@]+"${positional[@]}"}"
+    [ $# -eq 1 ] || die "'pr diff' takes exactly one argument (the PR number)"
+    if [ -n "$dash_R" ]; then
+        require_github_env
+        github_get_diff "repos/$dash_R/pulls/$1"
+    elif is_forgejo_number "$1"; then
+        require_forgejo_env
+        local owner_repo real_n
+        owner_repo=$(detect_forgejo_repo)
+        real_n=$(real_forgejo_number "$1")
+        forgejo_get_raw "$owner_repo/pulls/$real_n.diff"
+    elif has_github_creds; then
+        local target
+        target=$(detect_github_repo 2>/dev/null) || target=""
+        local response=""
+        if [ -n "$target" ]; then
+            response=$(github_get_diff "repos/$target/pulls/$1" 2>/dev/null || true)
+        fi
+        if [ -n "$response" ]; then
+            echo "$response"
+        elif has_forgejo_creds; then
+            local owner_repo
+            owner_repo=$(detect_forgejo_repo)
+            forgejo_get_raw "$owner_repo/pulls/$1.diff"
+        else
+            die "PR $1 not found on GitHub and Forgejo credentials not configured"
+        fi
+    else
+        require_forgejo_env
+        local owner_repo
+        owner_repo=$(detect_forgejo_repo)
+        forgejo_get_raw "$owner_repo/pulls/$1.diff"
     fi
 }
 
 cmd_issue_view() {
-    require_github_env
     local dash_R; local positional
     parse_dash_R "$@"
+    strip_ignored_flags
     set -- "${positional[@]+"${positional[@]}"}"
     [ $# -eq 1 ] || die "'issue view' takes exactly one argument (the issue number)"
-    local target
     if [ -n "$dash_R" ]; then
-        target="$dash_R"
+        # -R given → explicit GitHub, no offset
+        require_github_env
+        github_get "repos/$dash_R/issues/$1"
+    elif is_forgejo_number "$1"; then
+        # N > 10000 → Forgejo directly
+        require_forgejo_env
+        local owner_repo real_n
+        owner_repo=$(detect_forgejo_repo)
+        real_n=$(real_forgejo_number "$1")
+        forgejo_get "repos/$owner_repo/issues/$real_n" | apply_offset
+    elif has_github_creds; then
+        # Try GitHub first
+        local response target
+        target=$(detect_github_repo 2>/dev/null) || target=""
+        if [ -n "$target" ]; then
+            response=$(github_get_or_empty "repos/$target/issues/$1")
+        fi
+        if [ -n "${response:-}" ]; then
+            echo "$response"
+        elif has_forgejo_creds; then
+            local owner_repo
+            owner_repo=$(detect_forgejo_repo)
+            forgejo_get "repos/$owner_repo/issues/$1" | apply_offset
+        else
+            die "issue $1 not found on GitHub and Forgejo credentials not configured"
+        fi
     else
-        target=$(detect_github_repo)
+        # No GitHub creds → Forgejo only
+        require_forgejo_env
+        local owner_repo
+        owner_repo=$(detect_forgejo_repo)
+        forgejo_get "repos/$owner_repo/issues/$1" | apply_offset
     fi
-    github_get "repos/$target/issues/$1"
 }
 
 cmd_issue_list() {
-    require_github_env
     local dash_R; local positional
     parse_dash_R "$@"
+    strip_ignored_flags
     set -- "${positional[@]+"${positional[@]}"}"
     [ $# -eq 0 ] || die "'issue list' takes no arguments"
-    local target
     if [ -n "$dash_R" ]; then
-        target="$dash_R"
+        require_github_env
+        github_get "repos/$dash_R/issues"
     else
-        target=$(detect_github_repo)
+        local gh_json="" fj_json=""
+        if has_github_creds; then
+            local target
+            target=$(detect_github_repo 2>/dev/null) || target=""
+            if [ -n "$target" ]; then
+                gh_json=$(github_get_or_empty "repos/$target/issues")
+            fi
+        fi
+        if has_forgejo_creds; then
+            local owner_repo
+            owner_repo=$(detect_forgejo_repo)
+            fj_json=$(forgejo_get "repos/$owner_repo/issues?state=open" 2>/dev/null || true)
+        fi
+        if [ -z "$gh_json" ] && [ -z "$fj_json" ]; then
+            die "no credentials configured for either GitHub or Forgejo"
+        fi
+        # Merge: tag with _source, apply offset to Forgejo items
+        local gh_tagged fj_tagged
+        gh_tagged=$(echo "${gh_json:-[]}" | jq '[.[]? | . + {_source: "github"}]' 2>/dev/null || echo '[]')
+        fj_tagged=$(echo "${fj_json:-[]}" | jq "[.[]? | .number += $FORGEJO_OFFSET | . + {_source: \"forgejo\"}]" 2>/dev/null || echo '[]')
+        jq -nc --argjson gh "$gh_tagged" --argjson fj "$fj_tagged" '$gh + $fj'
     fi
-    github_get "repos/$target/issues"
 }
+
+cmd_repo_view() {
+    local dash_R; local positional
+    parse_dash_R "$@"
+    strip_ignored_flags
+    set -- "${positional[@]+"${positional[@]}"}"
+    [ $# -eq 0 ] || die "'repo view' takes no arguments"
+    if [ -n "$dash_R" ]; then
+        require_github_env
+        github_get "repos/$dash_R"
+    else
+        require_forgejo_env
+        local owner_repo
+        owner_repo=$(detect_forgejo_repo)
+        forgejo_get "repos/$owner_repo"
+    fi
+}
+
+# ---- Dispatch ----
 
 case "${1:-}" in
     pr)
         case "${2:-}" in
             create) shift 2; cmd_pr_create "$@" ;;
             view)   shift 2; cmd_pr_view "$@" ;;
-            *) die "'pr ${2:-}' not supported; supported: pr create, pr view" ;;
+            list)   shift 2; cmd_pr_list "$@" ;;
+            checks) shift 2; cmd_pr_checks "$@" ;;
+            diff)   shift 2; cmd_pr_diff "$@" ;;
+            *) die "'pr ${2:-}' not supported; supported: $SUPPORTED_COMMANDS" ;;
         esac
         ;;
     issue)
         case "${2:-}" in
             view) shift 2; cmd_issue_view "$@" ;;
             list) shift 2; cmd_issue_list "$@" ;;
-            *) die "'issue ${2:-}' not supported; supported: issue view, issue list" ;;
+            *) die "'issue ${2:-}' not supported; supported: $SUPPORTED_COMMANDS" ;;
         esac
         ;;
-    "") die "no subcommand; supported: pr create, pr view, issue view, issue list" ;;
-    *) die "'$1' not supported by the forge shim; supported: pr create, pr view, issue view, issue list" ;;
+    repo)
+        case "${2:-}" in
+            view) shift 2; cmd_repo_view "$@" ;;
+            *) die "'repo ${2:-}' not supported; supported: $SUPPORTED_COMMANDS" ;;
+        esac
+        ;;
+    "") die "no subcommand; supported: $SUPPORTED_COMMANDS" ;;
+    *) die "'$1' not supported by the forge shim; supported: $SUPPORTED_COMMANDS" ;;
 esac

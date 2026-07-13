@@ -11,6 +11,33 @@ the tool here pre-configured with the right credentials, and it knows where each
 command should go, so you don't have to. Its output is the raw API JSON response; use
 it as-is rather than reformatting it.
 
+### Number spaces
+
+Issues and PRs live on two backends (Forgejo and GitHub). The shim uses a virtual
+offset to keep them unambiguous:
+
+- **1–10000** → GitHub numbers. The shim tries GitHub first; if that 404s or GitHub
+  credentials aren't configured, it falls back to Forgejo.
+- **10001+** → Forgejo numbers (subtract 10000 for the real Forgejo number).
+  `pr create` returns Forgejo PR numbers in this offset range.
+- **`-R owner/repo`** → explicit GitHub lookup, no offset, no fallback.
+
+### Supported `gh` commands
+
+| Command | Routing | Notes |
+|---|---|---|
+| `pr create` | Forgejo only | `--head` auto-detected from current branch if omitted |
+| `pr view <N>` | offset-routed | |
+| `pr list` | merged listing | Both backends; items tagged with `_source` |
+| `pr checks <N>` | offset-routed | Fetches PR → SHA → commit statuses |
+| `pr diff <N>` | offset-routed | Returns raw diff text (not JSON) |
+| `issue view <N>` | offset-routed | |
+| `issue list` | merged listing | Both backends; items tagged with `_source` |
+| `repo view` | Forgejo default | `-R` for GitHub |
+
+Flags `--json`, `--jq`, and `-q` are accepted but ignored — the shim always returns
+raw API JSON.
+
 ## How to work
 
 - Understand before you change. Read the relevant code and the task until you can say,
