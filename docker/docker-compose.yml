@@ -7,9 +7,10 @@ services:
     container_name: forge-forgejo
     restart: unless-stopped
     environment:
-      # Enable Forgejo Actions and resolve `uses:` actions (checkout, setup-uv) from github.com.
+      # Enable Forgejo Actions and resolve `uses:` actions (checkout, setup-uv). Defaults to
+      # github.com; point FORGE_FORGEJO_ACTIONS_URL at a local mirror for an air-gapped host.
       FORGEJO__actions__ENABLED: "true"
-      FORGEJO__actions__DEFAULT_ACTIONS_URL: "github"
+      FORGEJO__actions__DEFAULT_ACTIONS_URL: "${FORGE_FORGEJO_ACTIONS_URL:-github}"
       # Public address Forgejo builds links/redirects from. Defaults to localhost for a
       # single-host setup; set FORGE_FORGEJO_ROOT_URL/FORGE_FORGEJO_DOMAIN in docker/.env
       # (gitignored) when reaching Forgejo from other devices, or links point to localhost.
@@ -49,9 +50,11 @@ services:
     container_name: forge-runner
     restart: unless-stopped
     # Join the host's docker group so the runner can use the mounted docker.sock.
-    # Must match `getent group docker` on the host; setup automation (#98) can auto-detect.
+    # Required and host-specific — set FORGE_DOCKER_GID to `getent group docker`'s gid in
+    # docker/.env. No default: a wrong gid silently breaks socket access, so fail fast instead.
+    # Setup automation (#98) can auto-detect it.
     group_add:
-      - "${FORGE_DOCKER_GID:-983}"
+      - "${FORGE_DOCKER_GID:?set FORGE_DOCKER_GID to the host docker group gid (getent group docker)}"
     depends_on:
       - forgejo
     volumes:

@@ -52,6 +52,8 @@ below for setup.
 
 ## Quick Start
 
+Run these from the `docker/` directory (there's no top-level compose file):
+
 ```bash
 # Start infrastructure
 docker compose up -d
@@ -62,8 +64,8 @@ docker compose ps
 
 Then open `http://localhost:3000` to set up Forgejo (create admin, generate API token).
 
-> **Note:** `docker compose up -d` also starts the `forge-runner` service, which will restart
-> until it's registered — see [First-time runner registration](#first-time-runner-registration).
+> **Note:** `docker compose up -d` also starts the `runner` service (container `forge-runner`),
+> which will restart until it's registered — see [First-time runner registration](#first-time-runner-registration).
 > Automating this bootstrap (so the runner self-registers) is tracked in #98.
 
 ## Agent Container
@@ -102,10 +104,14 @@ and makes CI/PR events the entry point for future review agents.
 The workflow used for a PR is read from the *base* branch, so `.github/workflows/ci.yml` must
 be on Forgejo `main` for PRs to be gated (it already is, mirrored from GitHub).
 
+Resolving `uses:` steps (`actions/checkout`, `setup-uv`) fetches them from `github.com`
+(`FORGEJO__actions__DEFAULT_ACTIONS_URL`), so the runner host needs outbound GitHub access —
+or point `FORGE_FORGEJO_ACTIONS_URL` at a local action mirror.
+
 ### Trust boundary
 
-The `forge-runner` service mounts the host Docker socket (`/var/run/docker.sock`) so it can
-spawn job containers via the host daemon. This is a **deliberate, accepted trade-off**: a
+The `runner` service (container `forge-runner`) mounts the host Docker socket
+(`/var/run/docker.sock`) so it can spawn job containers via the host daemon. This is a **deliberate, accepted trade-off**: a
 container with the Docker socket can control the host, so the runner is a different trust
 domain than the untrusted *agent* container. It's justified because agents must run real CI,
 and it stays isolated on `forge-network`. Job containers it spawns are unprivileged.
@@ -129,10 +135,11 @@ docker compose run --rm --entrypoint forgejo-runner runner \
 docker compose up -d runner
 ```
 
-The runner needs the host's `docker` group to use the mounted socket — set `FORGE_DOCKER_GID`
-in `docker/.env` to the host's `getent group docker` gid if it differs from the default.
-Enabling Actions on Forgejo restarts the `forge-forgejo` container, so do this when no agent
-session is running.
+The runner needs the host's `docker` group to use the mounted socket, so set `FORGE_DOCKER_GID`
+in `docker/.env` to the gid from `getent group docker` on the host. It's required and
+host-specific — there's no default, so a mismatch fails fast rather than silently breaking
+socket access. Enabling Actions on Forgejo restarts the `forge-forgejo` container, so do this
+when no agent session is running.
 
 ### Addressing: ROOT_URL vs. the runner's clone URL
 
@@ -141,4 +148,5 @@ registered `--instance` URL (`http://forge-forgejo:3000`) — they share `forge-
 reach Forgejo by that container name, so checkout works regardless of `ROOT_URL`. `ROOT_URL`
 (set via `FORGE_FORGEJO_ROOT_URL` in `docker/.env`) only governs the links Forgejo shows
 humans; point it at the host's name so browsing from other devices isn't redirected to
-`localhost`.
+`localhost`. The compose default is `http://localhost:3000/` (works only on the host itself) —
+e.g. set `FORGE_FORGEJO_ROOT_URL=http://myhost:3000/` and `FORGE_FORGEJO_DOMAIN=myhost`.
