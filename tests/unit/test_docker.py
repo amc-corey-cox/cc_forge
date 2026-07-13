@@ -12,6 +12,7 @@ from cc_forge.docker import (
     AGENT_UID,
     SHIM_CREDENTIALS_PATH,
     _rewrite_url,
+    _internal_forgejo_url,
     _ollama_environment,
     _claude_environment,
     _claude_credentials_path,
@@ -94,6 +95,24 @@ class TestRewriteUrl:
     def test_query_params_preserved(self):
         assert _rewrite_url("http://localhost:3000/api?token=abc", "forge-forgejo") == \
             "http://forge-forgejo:3000/api?token=abc"
+
+
+class TestInternalForgejoUrl:
+    def test_localhost(self):
+        assert _internal_forgejo_url("http://localhost:3000") == "http://forge-forgejo:3000"
+
+    def test_lan_hostname_with_path(self):
+        # ROOT_URL set to a LAN host must still resolve to the in-network container.
+        assert _internal_forgejo_url("http://tesseract:3000/alice/widgets.git") == \
+            "http://forge-forgejo:3000/alice/widgets.git"
+
+    def test_127_with_path(self):
+        assert _internal_forgejo_url("http://127.0.0.1:3000/x") == \
+            "http://forge-forgejo:3000/x"
+
+    def test_forces_internal_port_and_preserves_scheme(self):
+        assert _internal_forgejo_url("https://example.com:8443/owner/repo.git") == \
+            "https://forge-forgejo:3000/owner/repo.git"
 
 
 class TestOllamaEnvironment:

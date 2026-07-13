@@ -27,6 +27,18 @@ def _rewrite_url(url: str, docker_host: str) -> str:
     return url
 
 
+def _internal_forgejo_url(url: str) -> str:
+    """Point a Forgejo URL at the in-network container (``forge-forgejo:3000``).
+
+    The agent reaches Forgejo only by that container name on forge-network,
+    whatever host ROOT_URL / FORGE_FORGEJO_URL exposes to humans (localhost, a
+    LAN hostname, ...). Preserves scheme, path, and query.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    return urlunsplit(urlsplit(url)._replace(netloc="forge-forgejo:3000"))
+
+
 def _docker_client() -> docker.DockerClient:
     return docker.from_env()
 
@@ -263,7 +275,7 @@ def _inject_git_credentials(container, config: ForgeConfig) -> None:
     if not config.forgejo_token or not config.forgejo_url:
         return
 
-    forgejo_url = _rewrite_url(config.forgejo_url, "forge-forgejo")
+    forgejo_url = _internal_forgejo_url(config.forgejo_url)
     parts = urlsplit(forgejo_url)
     # git's store helper matches on scheme + host:port; drop any path/query.
     # Percent-encode the token so reserved chars (@ : /) don't corrupt the URL.
@@ -297,7 +309,7 @@ def _inject_shim_credentials(container, config: ForgeConfig) -> None:
     # Each pair: (env var name the shim expects, config value to write)
     pairs: list[tuple[str, str]] = []
     if config.forgejo_url:
-        pairs.append(("FORGEJO_URL", _rewrite_url(config.forgejo_url, "forge-forgejo")))
+        pairs.append(("FORGEJO_URL", _internal_forgejo_url(config.forgejo_url)))
     if config.forgejo_token:
         pairs.append(("FORGEJO_TOKEN", config.forgejo_token))
     if config.github_token:
@@ -338,8 +350,9 @@ def run_agent_container(
 
     container_name = f"{CONTAINER_PREFIX}{repo_name}-{int(time.time())}"
 
-    # Rewrite URLs for container network: localhost → Docker service names.
-    clone_url = _rewrite_url(repo_url, "forge-forgejo")
+    # The agent reaches Forgejo only as forge-forgejo:3000 on forge-network,
+    # regardless of the ROOT_URL the clone URL was built from.
+    clone_url = _internal_forgejo_url(repo_url)
 
     # Tokens (Forgejo + GitHub) are injected via files, not env vars, so they
     # are not visible to `docker inspect`. See _inject_git_credentials and
