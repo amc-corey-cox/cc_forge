@@ -450,7 +450,6 @@ class TestShimCredentialsContract:
             forgejo_url="http://forge-forgejo:3000",
             forgejo_token="contract-forgejo-token",
             ollama_cpu_url="http://localhost:11434",
-            ollama_gpu_url="http://localhost:11435",
             agent_image="t",
             claude_model="t",
             claude_api_key="",

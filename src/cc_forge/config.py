@@ -29,7 +29,6 @@ _DEFAULTS = {
     "FORGE_FORGEJO_URL": "http://localhost:3000",
     "FORGE_FORGEJO_TOKEN": "",
     "FORGE_OLLAMA_CPU_URL": "http://localhost:11434",
-    "FORGE_OLLAMA_GPU_URL": "http://localhost:11435",
     "FORGE_AGENT_IMAGE": "cc-forge-agent:latest",
     "FORGE_CLAUDE_MODEL": "qwen3-coder-32k",
     "FORGE_CLAUDE_API_KEY": "",
@@ -96,7 +95,6 @@ class ForgeConfig:
     forgejo_url: str = field(default_factory=lambda: _resolve("FORGE_FORGEJO_URL"))
     forgejo_token: str = field(default_factory=lambda: _resolve("FORGE_FORGEJO_TOKEN"))
     ollama_cpu_url: str = field(default_factory=lambda: _resolve("FORGE_OLLAMA_CPU_URL"))
-    ollama_gpu_url: str = field(default_factory=lambda: _resolve("FORGE_OLLAMA_GPU_URL"))
     agent_image: str = field(default_factory=lambda: _resolve("FORGE_AGENT_IMAGE"))
     claude_model: str = field(default_factory=lambda: _resolve("FORGE_CLAUDE_MODEL"))
     claude_api_key: str = field(

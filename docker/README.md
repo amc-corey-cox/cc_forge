@@ -5,26 +5,14 @@ Docker infrastructure for CC Forge: Forgejo (local git hosting) + Ollama proxies
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│ Host System                                                  │
-│                                                              │
-│  Ollama CPU (:11434)    Ollama GPU (:11435)                 │
-│       │                       │                              │
-│  ┌────┼───────────────────────┼──────────────────────────┐  │
-│  │    │   forge-network       │                          │  │
-│  │    ▼                       ▼                          │  │
-│  │  ollama-proxy         ollama-gpu-proxy                │  │
-│  │  (:11434)             (:11435)                        │  │
-│  │    │                       │                          │  │
-│  │    └───────────┬───────────┘                          │  │
-│  │                │                                      │  │
-│  │    ┌───────────▼───────────────┐   ┌──────────────┐  │  │
-│  │    │  Agent Container          │   │   Forgejo    │  │  │
-│  │    │  (clones from Forgejo)    │──▶│   (:3000)    │  │  │
-│  │    │  Claude Code / Aider      │   │              │  │  │
-│  │    └───────────────────────────┘   └──────────────┘  │  │
-│  └───────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
+Host System
+│
+├─ Ollama (:11434) — schedules across GPU, spills over to CPU
+│
+└─ forge-network (Docker bridge)
+   ├─ ollama-proxy (:11434)  ──▶  host Ollama
+   ├─ Forgejo (:3000)
+   └─ Agent Container  ──▶  clones from Forgejo; reaches Ollama via ollama-proxy
 ```
 
 ## Services
@@ -36,13 +24,10 @@ Docker infrastructure for CC Forge: Forgejo (local git hosting) + Ollama proxies
 - Port 222: SSH git
 - Persistent volume: `forgejo-data`
 
-### `forge-ollama-proxy` — CPU Ollama Proxy
+### `forge-ollama-proxy` — Ollama Proxy
 
-Forwards container traffic to host Ollama CPU service (port 11434).
-
-### `forge-ollama-gpu-proxy` — GPU Ollama Proxy
-
-Forwards container traffic to host Ollama GPU/Vulkan service (port 11435).
+Forwards container traffic to the host Ollama service (port 11434), which schedules
+across the GPU and spills over to CPU on its own.
 
 ### `forge-runner` — CI Runner (Forgejo Actions)
 

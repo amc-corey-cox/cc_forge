@@ -94,6 +94,7 @@
 | 2026-02-20 | Claude Code pass-through option | Local models too slow for testing; Max account keeps isolation benefits |
 | 2026-02-20 | CI as high priority | 22 merged PRs with zero CI; need regression protection |
 | 2026-02-20 | Session history tracking | No record of what agents did; need observability |
+| 2026-07-14 | Single Ollama for GPU+CPU (retire dual-service) | Modern Ollama auto-schedules GPU + CPU spillover on one endpoint; the second proxy became dead weight. Supersedes 2026-02-02. |
 
 ---
 

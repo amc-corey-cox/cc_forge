@@ -35,16 +35,6 @@ services:
     networks:
       - forge-network
 
-  ollama-gpu-proxy:
-    image: alpine/socat:latest
-    container_name: forge-ollama-gpu-proxy
-    restart: unless-stopped
-    command: TCP-LISTEN:11435,fork,reuseaddr TCP:host.docker.internal:11435,keepalive,keepidle=60,keepintvl=30,keepcnt=5
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - forge-network
-
   runner:
     image: code.forgejo.org/forgejo/runner:6.3.1
     container_name: forge-runner
