@@ -229,6 +229,65 @@ class TestIssueView:
         assert "takes exactly one argument" in result.stderr
 
 
+class TestIssueCreate:
+    def test_posts_to_issues_endpoint(self, fake_repo, fake_curl):
+        bin_dir, log = fake_curl
+        result = _run(
+            ["issue", "create", "--title", "Bug report", "--body", "Details here"],
+            _env(fake_repo),
+            bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        logged = log.read_text()
+        assert "http://forge-forgejo:3000/api/v1/repos/alice/widgets/issues" in logged
+        assert "POST" in logged
+        assert '"title":"Bug report"' in logged
+        assert '"body":"Details here"' in logged
+
+    def test_title_only(self, fake_repo, fake_curl):
+        bin_dir, log = fake_curl
+        result = _run(
+            ["issue", "create", "--title", "Minimal"],
+            _env(fake_repo),
+            bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        logged = log.read_text()
+        assert '"title":"Minimal"' in logged
+
+    def test_missing_title_fails(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(
+            ["issue", "create", "--body", "no title"],
+            _env(fake_repo),
+            bin_dir,
+        )
+        assert result.returncode != 0
+        assert "--title is required" in result.stderr
+
+    def test_rejects_dash_R(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(
+            ["issue", "create", "-R", "owner/repo", "--title", "T"],
+            _env(fake_repo),
+            bin_dir,
+        )
+        assert result.returncode != 0
+        assert "not supported on writes" in result.stderr
+
+    def test_output_has_offset(self, fake_repo, smart_fake_curl):
+        bin_dir, _, set_route = smart_fake_curl
+        set_route("issues", body='{"number":5,"title":"new issue"}')
+        result = _run(
+            ["issue", "create", "--title", "T"],
+            _env(fake_repo),
+            bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        output = json.loads(result.stdout)
+        assert output["number"] == 10005
+
+
 class TestIssueList:
     def test_contacts_both_backends(self, fake_repo, fake_curl):
         """Without -R, issue list merges results from both backends."""
@@ -366,7 +425,16 @@ class TestDashROnReads:
 
 
 class TestDashROnWrites:
-    """pr create rejects -R since writes always target Forgejo."""
+    """Write commands reject -R since writes always target Forgejo."""
+
+    def test_issue_create_rejects_dash_R(self, fake_repo, fake_curl):
+        bin_dir, _ = fake_curl
+        result = _run(
+            ["issue", "create", "-R", "anthropics/sdk", "--title", "T"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode != 0
+        assert "not supported on writes" in result.stderr
 
     def test_pr_create_rejects_dash_R(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl

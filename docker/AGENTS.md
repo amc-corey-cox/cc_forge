@@ -31,6 +31,7 @@ offset to keep them unambiguous:
 | `pr list` | merged listing | Both backends; items tagged with `_source` |
 | `pr checks <N>` | offset-routed | Fetches PR → SHA → commit statuses |
 | `pr diff <N>` | offset-routed | Returns raw diff text (not JSON) |
+| `issue create` | Forgejo only | `--title` required, `--body` optional |
 | `issue view <N>` | offset-routed | |
 | `issue list` | merged listing | Both backends; items tagged with `_source` |
 | `repo view` | Forgejo default | `-R` for GitHub |

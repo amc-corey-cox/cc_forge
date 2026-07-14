@@ -17,6 +17,7 @@
 #   pr list ............ merged listing (both backends)
 #   pr checks <N> ...... offset-routed (PR → SHA → statuses)
 #   pr diff <N> ........ offset-routed (raw diff text)
+#   issue create ....... Forgejo workspace (writes; -R rejected)
 #   issue view <N> ..... offset-routed
 #   issue list ......... merged listing (both backends)
 #   repo view .......... Forgejo default, GitHub with -R
@@ -28,7 +29,7 @@
 set -euo pipefail
 
 FORGEJO_OFFSET=10000
-SUPPORTED_COMMANDS="pr create, pr view, pr list, pr checks, pr diff, issue view, issue list, repo view"
+SUPPORTED_COMMANDS="pr create, pr view, pr list, pr checks, pr diff, issue create, issue view, issue list, repo view"
 
 die() {
     echo "gh: $*" >&2
@@ -415,6 +416,34 @@ cmd_pr_diff() {
     fi
 }
 
+cmd_issue_create() {
+    # Writes never target GitHub.
+    for arg in "$@"; do
+        case "$arg" in
+            -R|--repo|-R=*|--repo=*)
+                die "'issue create' writes to your Forgejo workspace; -R/--repo is not supported on writes" ;;
+        esac
+    done
+    require_forgejo_env
+    local title="" body=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --title) [ $# -ge 2 ] || die "--title needs a value"; title="$2"; shift 2 ;;
+            --body)  [ $# -ge 2 ] || die "--body needs a value";  body="$2";  shift 2 ;;
+            *) die "unknown flag for 'issue create': $1" ;;
+        esac
+    done
+    [ -n "$title" ] || die "--title is required for 'issue create'"
+
+    local owner_repo payload
+    owner_repo=$(detect_forgejo_repo)
+    payload=$(jq -nc \
+        --arg title "$title" \
+        --arg body "$body" \
+        '{title: $title, body: $body}')
+    forgejo_post "repos/$owner_repo/issues" "$payload" | apply_offset
+}
+
 cmd_issue_view() {
     local dash_R; local positional
     parse_dash_R "$@"
@@ -523,8 +552,9 @@ case "${1:-}" in
         ;;
     issue)
         case "${2:-}" in
-            view) shift 2; cmd_issue_view "$@" ;;
-            list) shift 2; cmd_issue_list "$@" ;;
+            create) shift 2; cmd_issue_create "$@" ;;
+            view)   shift 2; cmd_issue_view "$@" ;;
+            list)   shift 2; cmd_issue_list "$@" ;;
             *) die "'issue ${2:-}' not supported; supported: $SUPPORTED_COMMANDS" ;;
         esac
         ;;
