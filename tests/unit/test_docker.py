@@ -520,7 +520,7 @@ class TestRunAgentContainer:
         extra_hosts = create_kwargs.kwargs["extra_hosts"]
         assert extra_hosts == {"host.docker.internal": "host-gateway"}
 
-    def test_host_gateway_absent_for_claude_passthrough(self):
+    def test_host_gateway_absent_for_passthrough(self):
         client, _, _ = self._run(passthrough=True)
         create_kwargs = client.containers.create.call_args
         assert create_kwargs.kwargs["extra_hosts"] is None

@@ -16,7 +16,6 @@ import click
 
 from cc_forge.config import ForgeConfig
 from cc_forge.docker import (
-    AGENT_UID,
     _add_tar_dir,
     _add_tar_file,
     _docker_client,
