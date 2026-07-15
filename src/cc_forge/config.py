@@ -25,14 +25,15 @@ def _find_compose_file() -> str:
     return ""
 
 
+AGENT_MODEL_DEFAULT = "qwen3-coder-32k"
+
 _DEFAULTS = {
     "FORGE_FORGEJO_URL": "http://localhost:3000",
     "FORGE_FORGEJO_TOKEN": "",
     "FORGE_OLLAMA_CPU_URL": "http://localhost:11434",
-    "FORGE_OLLAMA_GPU_URL": "http://localhost:11435",
     "FORGE_AGENT_IMAGE": "cc-forge-agent:latest",
-    "FORGE_CLAUDE_MODEL": "qwen3-coder-32k",
-    "FORGE_CLAUDE_API_KEY": "",
+    "FORGE_AGENT_MODEL": AGENT_MODEL_DEFAULT,
+    "FORGE_AGENT_API_KEY": "",
     "FORGE_COMPOSE_FILE": "",
     "FORGE_GITHUB_TOKEN": "",
     "FORGE_GITHUB_REPO": "",
@@ -82,6 +83,23 @@ def _resolve(key: str) -> str:
     return default
 
 
+def _resolve_with_fallback(new_key: str, old_key: str) -> str:
+    """Resolve a renamed config key, trying the old name as fallback.
+
+    Checks env vars and .env files for both the new and old key names,
+    preferring the new name. Falls back to _DEFAULTS for the new key.
+    """
+    for key in (new_key, old_key):
+        val = os.environ.get(key)
+        if val is not None and val != "":
+            return val
+        for env_file in _ENV_FILES:
+            file_env = _load_env_file(env_file)
+            if key in file_env and file_env[key] != "":
+                return file_env[key]
+    return _DEFAULTS.get(new_key, _DEFAULTS.get(old_key, ""))
+
+
 def _resolve_int(key: str) -> int:
     """Resolve an integer config value with an actionable error on bad input."""
     raw = _resolve(key)
@@ -96,11 +114,12 @@ class ForgeConfig:
     forgejo_url: str = field(default_factory=lambda: _resolve("FORGE_FORGEJO_URL"))
     forgejo_token: str = field(default_factory=lambda: _resolve("FORGE_FORGEJO_TOKEN"))
     ollama_cpu_url: str = field(default_factory=lambda: _resolve("FORGE_OLLAMA_CPU_URL"))
-    ollama_gpu_url: str = field(default_factory=lambda: _resolve("FORGE_OLLAMA_GPU_URL"))
     agent_image: str = field(default_factory=lambda: _resolve("FORGE_AGENT_IMAGE"))
-    claude_model: str = field(default_factory=lambda: _resolve("FORGE_CLAUDE_MODEL"))
-    claude_api_key: str = field(
-        default_factory=lambda: _resolve("FORGE_CLAUDE_API_KEY")
+    agent_model: str = field(
+        default_factory=lambda: _resolve_with_fallback("FORGE_AGENT_MODEL", "FORGE_CLAUDE_MODEL")
+    )
+    agent_api_key: str = field(
+        default_factory=lambda: _resolve_with_fallback("FORGE_AGENT_API_KEY", "FORGE_CLAUDE_API_KEY")
         or os.environ.get("ANTHROPIC_API_KEY", "")
     )
     compose_file: str = field(default_factory=lambda: _resolve("FORGE_COMPOSE_FILE"))
