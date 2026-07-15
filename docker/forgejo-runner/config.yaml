@@ -1,0 +1,19 @@
+# Forgejo Actions runner configuration.
+# Registration (writing /data/.runner) is a one-time server step — see docker/README.md.
+
+log:
+  level: info
+
+runner:
+  # One job at a time: this shares consumer hardware with Ollama and agent containers.
+  capacity: 1
+  timeout: 30m
+  # Maps a workflow's `runs-on:` label to the image the job runs in.
+  labels:
+    - "ubuntu-latest:docker://catthehacker/ubuntu:act-latest"
+
+container:
+  # Job containers must join forge-network so they can reach forge-forgejo:3000 to clone.
+  network: forge-network
+  # The runner holds the docker.sock; job containers stay unprivileged.
+  privileged: false
