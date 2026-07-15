@@ -30,7 +30,6 @@ from cc_forge.docker import (
 def _make_config(**kwargs) -> ForgeConfig:
     defaults = dict(
         ollama_cpu_url="http://localhost:11434",
-        ollama_gpu_url="http://localhost:11435",
         forgejo_url="http://localhost:3000",
         forgejo_token="test-token",
         agent_image="test",

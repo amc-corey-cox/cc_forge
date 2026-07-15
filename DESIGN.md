@@ -30,7 +30,7 @@ User types `forge` in a git repo
        ├─ Launches agent container on forge-network
        │    └─ Container clones from Forgejo (NOT host mount)
        │    └─ Has Claude Code + Aider installed
-       │    └─ Can reach: Forgejo (port 3000), Ollama (ports 11434/11435)
+       │    └─ Can reach: Forgejo (port 3000), Ollama (port 11434)
        │    └─ Cannot reach: host filesystem
        └─ Attaches terminal → interactive Claude Code session
               │
@@ -98,8 +98,7 @@ agents useless for real work.
 | Service | Purpose | Port |
 |---------|---------|------|
 | `forge-forgejo` | Local git hosting + review UI | 3000 |
-| `forge-ollama-proxy` | Forwards to host Ollama CPU | 11434 (internal) |
-| `forge-ollama-gpu-proxy` | Forwards to host Ollama GPU | 11435 (internal) |
+| `forge-ollama-proxy` | Forwards to host Ollama (GPU+CPU) | 11434 (internal) |
 
 ### Agent Container
 
