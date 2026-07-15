@@ -33,6 +33,14 @@ from cc_forge.git import (
 )
 
 
+def _resolve_github_repo(config: ForgeConfig, repo_name: str) -> str:
+    """Resolve the GitHub destination, surfacing config errors as clean CLI messages."""
+    try:
+        return config.resolve_github_repo(repo_name)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+
 def promote_pull_request(
     config: ForgeConfig,
     pr_number: int,
@@ -48,7 +56,7 @@ def promote_pull_request(
 
     repo_root = get_repo_root(repo_path)
     repo_name = get_repo_name(repo_root)
-    github_repo = config.resolve_github_repo(repo_name)
+    github_repo = _resolve_github_repo(config, repo_name)
 
     meta = pr_metadata(config, pr_number, repo_name)
     head, base, title, body = meta["head"], meta["base"], meta["title"], meta["body"]
@@ -108,7 +116,7 @@ def promote_issue(config: ForgeConfig, issue_number: int, repo_path: str = ".") 
 
     repo_root = get_repo_root(repo_path)
     repo_name = get_repo_name(repo_root)
-    github_repo = config.resolve_github_repo(repo_name)
+    github_repo = _resolve_github_repo(config, repo_name)
 
     meta = issue_metadata(config, issue_number, repo_name)
     if meta["is_pr"]:
