@@ -13,7 +13,6 @@ from cc_forge.config import AGENT_MODEL_DEFAULT, ForgeConfig
 def _make_config(**kwargs) -> ForgeConfig:
     defaults = dict(
         ollama_cpu_url="http://localhost:11434",
-        ollama_gpu_url="http://localhost:11435",
         forgejo_url="http://localhost:3000",
         forgejo_token="test-token",
         agent_image="test",
