@@ -6,12 +6,16 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 import docker
 from docker.errors import NotFound, ImageNotFound
 
 from cc_forge.config import ForgeConfig
+
+if TYPE_CHECKING:
+    from cc_forge.agents import AgentAdapter
 
 CONTAINER_PREFIX = "forge-agent-"
 
@@ -101,41 +105,6 @@ def ensure_agent_image_built(config: ForgeConfig) -> str:
     return image_tag
 
 
-def _ollama_environment(config: ForgeConfig) -> dict[str, str]:
-    """Environment variables for local Ollama backend."""
-    ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
-    return {
-        "OLLAMA_HOST": ollama_url,
-        "ANTHROPIC_AUTH_TOKEN": "ollama",
-        "ANTHROPIC_BASE_URL": ollama_url,
-        "DISABLE_PROMPT_CACHING": "true",
-        "API_TIMEOUT_MS": "3600000",
-        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-        "MAX_THINKING_TOKENS": "0",
-    }
-
-
-def _forge_claude_state_dir() -> Path:
-    return Path.home() / ".config" / "forge" / "claude-state"
-
-
-def _claude_credentials_path() -> Path:
-    """Return the path to Claude OAuth credentials (saved state preferred, then host)."""
-    for candidate in (
-        _forge_claude_state_dir() / ".credentials.json",
-        Path.home() / ".claude" / ".credentials.json",
-    ):
-        if candidate.is_symlink():
-            raise RuntimeError(f"Refusing to use symlinked credentials: {candidate}")
-        if candidate.is_file():
-            return candidate
-    raise RuntimeError(
-        "Claude credentials not found.\n"
-        "Either set FORGE_CLAUDE_API_KEY or run 'claude' locally to authenticate."
-    )
-
-
 AGENT_UID = 1000  # Matches Dockerfile: useradd -u 1000 agent
 
 
@@ -201,69 +170,6 @@ def _inject_agent_instructions(container, config: ForgeConfig) -> None:
                 _add_tar_file(tar, f".claude/commands/{cmd.name}", cmd.read_bytes())
     buf.seek(0)
     container.put_archive("/home/agent", buf)
-
-
-def _copy_claude_config(container, config: ForgeConfig) -> None:
-    """Copy Claude config into the container.
-
-    When FORGE_CLAUDE_API_KEY is set, only injects onboarding bypass and CLAUDE.md.
-    Otherwise, also injects OAuth credentials from host or saved state.
-    """
-    import io
-    import tarfile
-
-    need_credentials = not config.claude_api_key
-
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w") as tar:
-        _add_tar_dir(tar, ".claude/")
-
-        if need_credentials:
-            cred_path = _claude_credentials_path()
-            state_dir = _forge_claude_state_dir()
-
-            # Inject saved state as baseline (skip credentials — we'll add fresh ones)
-            if state_dir.is_dir():
-                for path in state_dir.rglob("*"):
-                    rel = path.relative_to(state_dir)
-                    if rel.name == ".credentials.json":
-                        continue
-                    arc_name = f".claude/{rel}"
-                    if path.is_dir():
-                        _add_tar_dir(tar, arc_name + "/")
-                    else:
-                        _add_tar_file(tar, arc_name, path.read_bytes())
-
-            # Inject credentials once (saved-preferred, host fallback)
-            _add_tar_file(tar, ".claude/.credentials.json",
-                          cred_path.read_bytes(), mode=0o600)
-
-        # $HOME/.claude.json — onboarding bypass + saved state
-        # hasCompletedOnboarding lives here (NOT in settings.json)
-        saved_claude_json = _forge_claude_state_dir() / ".claude.json"
-        if saved_claude_json.is_file():
-            _add_tar_file(tar, ".claude.json",
-                          saved_claude_json.read_bytes(), mode=0o600)
-        else:
-            _add_tar_file(tar, ".claude.json",
-                          b'{"hasCompletedOnboarding":true}', mode=0o600)
-    buf.seek(0)
-
-    container.put_archive("/home/agent", buf)
-
-
-def _claude_environment(config: ForgeConfig) -> dict[str, str]:
-    """Environment variables for Claude API pass-through."""
-    env = {
-        # Override Dockerfile defaults that would route to Ollama
-        "ANTHROPIC_BASE_URL": "",
-        "ANTHROPIC_AUTH_TOKEN": "",
-        # Container agent can't write to npm global; skip auto-update
-        "CLAUDE_CODE_SKIP_UPDATE": "1",
-    }
-    if config.claude_api_key:
-        env["ANTHROPIC_API_KEY"] = config.claude_api_key
-    return env
 
 
 def _inject_git_credentials(container, config: ForgeConfig) -> None:
@@ -341,8 +247,9 @@ def run_agent_container(
     repo_url: str,
     branch: str,
     repo_name: str,
-    agent: str = "claude",
-    claude_passthrough: bool = False,
+    agent: str,
+    adapter: AgentAdapter,
+    passthrough: bool = False,
 ) -> str:
     """Launch an agent container on forge-network. Returns container ID."""
     client = _docker_client()
@@ -363,14 +270,12 @@ def run_agent_container(
         "FORGE_AGENT": agent,
     }
 
-    if claude_passthrough:
-        environment.update(_claude_environment(config))
-    else:
-        environment.update(_ollama_environment(config))
+    agent_env = adapter.container_env(config, passthrough)
+    environment.update(agent_env)
 
-    # Only expose host gateway when the agent reaches Ollama on the host.
-    ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
-    needs_gateway = (not claude_passthrough) and "host.docker.internal" in ollama_url
+    # Only expose host gateway when the adapter's env reaches the host
+    # (e.g. local Ollama via host.docker.internal).
+    needs_gateway = any("host.docker.internal" in v for v in agent_env.values())
     extra_hosts = {"host.docker.internal": "host-gateway"} if needs_gateway else {}
 
     container = client.containers.create(
@@ -389,10 +294,9 @@ def run_agent_container(
     try:
         _inject_git_credentials(container, config)
         _inject_shim_credentials(container, config)
-        if claude_passthrough:
-            _copy_claude_config(container, config)
-        # After the Claude state restore, so the canonical instructions always win
-        # (restored state can carry a stale ~/.claude/CLAUDE.md from a prior session).
+        adapter.inject_state(container, config, passthrough)
+        # After the adapter state restore, so the canonical instructions always
+        # win (restored state can carry a stale CLAUDE.md from a prior session).
         _inject_agent_instructions(container, config)
         container.start()
     except Exception:
@@ -433,29 +337,16 @@ def wait_for_ready(container_id: str, timeout: int = 60) -> None:
     raise RuntimeError(f"Timed out waiting for repo clone.\nContainer logs:\n{logs}")
 
 
-def _build_agent_cmd(agent: str, config: ForgeConfig, claude_passthrough: bool = False) -> list[str]:
-    """Build the command to run inside the agent container."""
-    if agent == "claude":
-        cmd = ["claude", "--dangerously-skip-permissions"]
-        if not claude_passthrough:
-            cmd += ["--model", config.claude_model]
-    elif agent == "aider":
-        cmd = ["aider", "--model", "ollama/llama3.1"]
-    else:
-        cmd = ["/bin/bash"]
-    return cmd
-
-
 def exec_agent(
     container_id: str,
-    agent: str,
+    adapter: AgentAdapter,
     config: ForgeConfig,
-    claude_passthrough: bool = False,
+    passthrough: bool = False,
 ) -> int:
     """Exec the agent interactively inside a running container. Returns exit code."""
     wait_for_ready(container_id)
 
-    cmd = _build_agent_cmd(agent, config, claude_passthrough)
+    cmd = adapter.build_cmd(config, passthrough)
 
     docker_cmd = ["docker", "exec", "-w", "/workspace/repo"]
     if sys.stdin.isatty():
@@ -465,81 +356,6 @@ def exec_agent(
 
     result = subprocess.run(docker_cmd)
     return result.returncode
-
-
-def save_claude_credentials(container_id: str) -> None:
-    """Save full Claude state from container back to host for reuse."""
-    import io
-    import shutil
-    import tarfile
-    import tempfile
-
-    client = _docker_client()
-    state_dir = _forge_claude_state_dir()
-    _SKIP_PATTERNS = {"debug", "session-env", "file-history", "shell-snapshots"}
-
-    try:
-        container = client.containers.get(container_id)
-    except NotFound:
-        return
-
-    try:
-        bits, _ = container.get_archive("/home/agent/.claude/.")
-    except docker.errors.APIError:
-        click.echo("Warning: could not read Claude state from container.", err=True)
-        return
-
-    buf = io.BytesIO()
-    for chunk in bits:
-        buf.write(chunk)
-    buf.seek(0)
-
-    state_dir.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        dir=state_dir.parent, prefix="claude-state-tmp-"
-    ) as tmp_dir_str:
-        tmp_dir = Path(tmp_dir_str)
-        with tarfile.open(fileobj=buf, mode="r") as tar:
-            for member in tar.getmembers():
-                parts = Path(member.name).parts
-                if any(p in _SKIP_PATTERNS for p in parts):
-                    continue
-                if ".git" in parts:
-                    continue
-                tar.extract(member, tmp_dir, filter="data")
-
-        extracted = tmp_dir / ".claude" if (tmp_dir / ".claude").exists() else tmp_dir
-        if state_dir.exists():
-            shutil.rmtree(state_dir)
-        shutil.move(str(extracted), str(state_dir))
-
-    state_dir.chmod(0o700)
-    cred_file = state_dir / ".credentials.json"
-    if cred_file.is_file():
-        cred_file.chmod(0o600)
-
-    # Also save ~/.claude.json (onboarding/account state)
-    try:
-        bits2, _ = container.get_archive("/home/agent/.claude.json")
-    except docker.errors.APIError:
-        return
-
-    buf2 = io.BytesIO()
-    for chunk in bits2:
-        buf2.write(chunk)
-    buf2.seek(0)
-    with tarfile.open(fileobj=buf2, mode="r") as tar:
-        for member in tar.getmembers():
-            if member.isreg():
-                f = tar.extractfile(member)
-                if f:
-                    state_dir.mkdir(parents=True, exist_ok=True)
-                    target = state_dir / ".claude.json"
-                    tmp = state_dir / ".claude.json.tmp"
-                    tmp.write_bytes(f.read())
-                    tmp.chmod(0o600)
-                    tmp.replace(target)
-                break
 
 
 def cleanup_container(container_id: str) -> None:

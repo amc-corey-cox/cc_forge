@@ -20,22 +20,38 @@ def main(ctx: click.Context) -> None:
         ctx.invoke(run)
 
 
+def _agent_choices() -> list[str]:
+    """Return registered agent names."""
+    from cc_forge.agents import REGISTRY
+    return list(REGISTRY.keys())
+
+
 @main.command()
 @click.option("--repo", default=".", help="Path to git repository (default: current directory).")
-@click.option("--agent", default="claude", type=click.Choice(["claude", "aider"]),
+@click.option("--agent", default="claude",
+              type=click.Choice(list(_agent_choices())),
               help="Agent to use inside the container.")
-@click.option("--claude", "claude_passthrough", is_flag=True,
-              help="Use your Claude API account instead of local Ollama.")
-def run(repo: str, agent: str, claude_passthrough: bool) -> None:
+@click.option("--passthrough", is_flag=True,
+              help="Use remote API instead of local Ollama.")
+@click.option("--claude", "claude_compat", is_flag=True, hidden=True,
+              help="Deprecated alias for --passthrough with --agent claude.")
+def run(repo: str, agent: str, passthrough: bool, claude_compat: bool) -> None:
     """Start an interactive agent session."""
+    from cc_forge.agents import REGISTRY
     from cc_forge.config import load_config
     from cc_forge.session import start_session
 
-    if claude_passthrough and agent != "claude":
-        raise click.UsageError("--claude can only be used with --agent claude")
+    if claude_compat:
+        if agent != "claude":
+            raise click.UsageError("--claude can only be used with --agent claude")
+        passthrough = True
+
+    adapter = REGISTRY[agent]
+    if passthrough and not adapter.supports_passthrough:
+        raise click.UsageError(f"--passthrough is not supported for agent '{agent}'")
 
     cfg = load_config()
-    start_session(cfg, repo_path=repo, agent=agent, claude_passthrough=claude_passthrough)
+    start_session(cfg, repo_path=repo, agent=agent, adapter=adapter, passthrough=passthrough)
 
 
 def _walk(cfg, repo: str, remote: str, kinds: tuple[str, ...]) -> None:
