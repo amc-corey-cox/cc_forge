@@ -191,6 +191,16 @@ class TestPrCreate:
         assert "--title needs a value" in result.stderr
         assert "unbound variable" not in result.stderr
 
+    def test_ignored_flags_are_tolerated(self, fake_repo, fake_curl):
+        # --json/--jq/-q are documented as tolerated; pr create must not error on them.
+        bin_dir, log = fake_curl
+        result = _run(
+            ["pr", "create", "--title", "T", "--head", "topic", "--json", "number", "-q"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        assert '"title":"T"' in log.read_text()
+
 
 class TestPrView:
     def test_gets_pulls_by_number(self, fake_repo, fake_curl):
@@ -198,6 +208,7 @@ class TestPrView:
         # N=7 with both creds → tries GitHub first (gets '{}'), returns that.
         result = _run(["pr", "view", "7"], _env(fake_repo), bin_dir)
         assert result.returncode == 0, result.stderr
+        assert "https://api.github.com/repos/ghorg/widgets/pulls/7" in log.read_text()
 
     def test_missing_number_fails(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl
@@ -221,6 +232,7 @@ class TestIssueView:
         assert "https://api.github.com/repos/ghorg/widgets/issues/12" in logged
         # GitHub auth used, Forgejo auth not leaked into this call
         assert "token github-test-token" in logged
+        assert "token forgejo-test-token" not in logged
 
     def test_extra_args_rejected(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl
@@ -254,6 +266,16 @@ class TestIssueCreate:
         assert result.returncode == 0, result.stderr
         logged = log.read_text()
         assert '"title":"Minimal"' in logged
+
+    def test_ignored_flags_are_tolerated(self, fake_repo, fake_curl):
+        # --json/--jq/-q are documented as tolerated; issue create must not error on them.
+        bin_dir, log = fake_curl
+        result = _run(
+            ["issue", "create", "--title", "T", "--jq", ".number", "-q"],
+            _env(fake_repo), bin_dir,
+        )
+        assert result.returncode == 0, result.stderr
+        assert '"title":"T"' in log.read_text()
 
     def test_missing_title_fails(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl

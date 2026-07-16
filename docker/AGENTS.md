@@ -29,7 +29,7 @@ offset to keep them unambiguous:
 | `pr create` | Forgejo only | `--head` auto-detected from current branch if omitted |
 | `pr view <N>` | offset-routed | |
 | `pr list` | merged listing | Both backends; items tagged with `_source` |
-| `pr checks <N>` | offset-routed | Fetches PR → SHA → commit statuses |
+| `pr checks <N>` | offset-routed | Fetches PR → SHA → checks (GitHub `check-runs` / Forgejo `statuses`) |
 | `pr diff <N>` | offset-routed | Returns raw diff text (not JSON) |
 | `issue create` | Forgejo only | `--title` required, `--body` optional |
 | `issue view <N>` | offset-routed | |

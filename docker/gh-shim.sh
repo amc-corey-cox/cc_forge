@@ -15,7 +15,7 @@
 #   pr create .......... Forgejo workspace (writes; -R rejected)
 #   pr view <N> ........ offset-routed
 #   pr list ............ merged listing (both backends)
-#   pr checks <N> ...... offset-routed (PR → SHA → statuses)
+#   pr checks <N> ...... offset-routed (PR → SHA → GitHub check-runs / Forgejo statuses)
 #   pr diff <N> ........ offset-routed (raw diff text)
 #   issue create ....... Forgejo workspace (writes; -R rejected)
 #   issue view <N> ..... offset-routed
@@ -230,6 +230,8 @@ cmd_pr_create() {
             --head)  [ $# -ge 2 ] || die "--head needs a value";  head="$2";  shift 2 ;;
             --base)  [ $# -ge 2 ] || die "--base needs a value";  base="$2";  shift 2 ;;
             --body)  [ $# -ge 2 ] || die "--body needs a value";  body="$2";  shift 2 ;;
+            --json|--jq) shift; if [ $# -gt 0 ]; then shift; fi ;;  # ignored (takes a value)
+            --json=*|--jq=*|-q) shift ;;                            # ignored
             *) die "unknown flag for 'pr create': $1" ;;
         esac
     done
@@ -430,6 +432,8 @@ cmd_issue_create() {
         case "$1" in
             --title) [ $# -ge 2 ] || die "--title needs a value"; title="$2"; shift 2 ;;
             --body)  [ $# -ge 2 ] || die "--body needs a value";  body="$2";  shift 2 ;;
+            --json|--jq) shift; if [ $# -gt 0 ]; then shift; fi ;;  # ignored (takes a value)
+            --json=*|--jq=*|-q) shift ;;                            # ignored
             *) die "unknown flag for 'issue create': $1" ;;
         esac
     done
