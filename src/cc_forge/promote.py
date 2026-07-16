@@ -238,14 +238,23 @@ def list_promotable(config: ForgeConfig, repo_name: str) -> list[dict]:
 
 
 def _first_paragraph(body: str, limit: int = 200) -> str:
-    """First real text paragraph of a body: skip markdown headings and blanks,
-    collapse whitespace, and cap the length."""
-    for para in body.strip().split("\n\n"):
-        text = " ".join(para.split())
-        if not text or text.startswith("#"):
-            continue
-        return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
-    return ""
+    """First real text paragraph of a body: skip leading markdown headings and
+    blanks, collect until the next blank line or heading, collapse whitespace,
+    and cap the length (even a heading directly above text, no blank line)."""
+    picked: list[str] = []
+    for line in body.strip().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            if picked:
+                break  # a blank line or heading ends the first paragraph
+            continue   # still skipping leading blanks/headings
+        picked.append(stripped)
+    text = " ".join(picked)
+    if len(text) <= limit:
+        return text
+    if limit < 3:  # no room for the "..." — hard-cut so we never exceed limit
+        return text[:limit]
+    return text[: limit - 3].rstrip() + "..."
 
 
 def _promotable_summary(it: dict) -> str:

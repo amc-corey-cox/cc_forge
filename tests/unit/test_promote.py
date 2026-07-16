@@ -351,6 +351,10 @@ def test_first_paragraph_skips_headings_and_caps():
     capped = promote_mod._first_paragraph("x" * 250, limit=50)
     assert len(capped) == 50 and capped.endswith("...")
     assert promote_mod._first_paragraph("") == ""
+    # Heading directly above text (no blank line) still finds the text.
+    assert promote_mod._first_paragraph("## Summary\nExpands the shim.") == "Expands the shim."
+    # limit < 3 has no room for the ellipsis and must never exceed the limit.
+    assert promote_mod._first_paragraph("hello world", limit=2) == "he"
 
 
 def test_promotable_summary_renders_context():
