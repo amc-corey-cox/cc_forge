@@ -46,15 +46,15 @@ This launches Claude Code backed by local Ollama models. Behind the scenes forge
 4. Launches an agent container that clones from Forgejo — no host mount.
 5. Drops you into an interactive Claude Code session inside the container.
 
-### Use the Claude API instead of local models
+### Use a remote API instead of local models
 
 ```bash
-forge run --claude
+forge run --passthrough
 ```
 
-Set `FORGE_CLAUDE_API_KEY` in `config.env` (forge also honors `ANTHROPIC_API_KEY`).
-The `--claude` flag routes the agent to the Anthropic API instead of the local
-Ollama proxy.
+Set `FORGE_AGENT_API_KEY` in `config.env` (forge also honors `ANTHROPIC_API_KEY`).
+The `--passthrough` flag routes the agent to its remote API instead of the local
+Ollama proxy. (`--claude` still works as an alias.)
 
 ### Use Aider
 
@@ -200,8 +200,8 @@ directory, or environment variables (which take precedence). The common ones:
 |----------|---------|---------|
 | `FORGE_FORGEJO_TOKEN` | *(required)* | Forgejo API token |
 | `FORGE_FORGEJO_URL` | `http://localhost:3000` | Forgejo instance URL |
-| `FORGE_CLAUDE_API_KEY` | *(empty)* | Anthropic API key for `--claude` mode |
-| `FORGE_CLAUDE_MODEL` | `qwen3-coder-32k` | Model for Claude Code in Ollama mode |
+| `FORGE_AGENT_API_KEY` | *(empty)* | API key for `--passthrough` mode (also honors `ANTHROPIC_API_KEY`) |
+| `FORGE_AGENT_MODEL` | `qwen3-coder-32k` | Model for the agent in Ollama mode |
 | `FORGE_GITHUB_TOKEN` | *(empty)* | GitHub token — for the agent's GitHub reads, and for promote when `gh` isn't authed |
 | `FORGE_GITHUB_REPO` | *(empty)* | GitHub `owner/repo` for single-machine promote (or set `FORGE_GITHUB_OWNER`) |
 | `FORGE_GITHUB_OWNER` | *(empty)* | GitHub owner; repo name derived from the local directory |

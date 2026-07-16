@@ -14,7 +14,6 @@ def config() -> ForgeConfig:
         forgejo_url="http://localhost:3000",
         forgejo_token="test-token",
         ollama_cpu_url="http://localhost:11434",
-        ollama_gpu_url="http://localhost:11435",
         agent_image="test:latest",
         compose_file="/dev/null",
     )
