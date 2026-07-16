@@ -162,7 +162,7 @@ real_forgejo_number() {
 
 # Pipe filter: add offset to .number in a single JSON object.
 apply_offset() {
-    jq ".number += $FORGEJO_OFFSET"
+    jq -c ".number += $FORGEJO_OFFSET"
 }
 
 # Strip -R/--repo (and the =value forms) from args into the dash_R variable,
