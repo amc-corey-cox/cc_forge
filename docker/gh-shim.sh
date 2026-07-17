@@ -197,12 +197,10 @@ strip_ignored_flags() {
     local i=0
     while [ $i -lt ${#positional[@]} ]; do
         case "${positional[$i]}" in
-            --json|--jq)
-                # These take a following value — skip it too.
+            --json|--jq|-q)
+                # These take a following value (e.g. `-q <jq-expr>`) — skip it too.
                 i=$(( i + 2 )) ;;
-            --json=*|--jq=*)
-                i=$(( i + 1 )) ;;
-            -q)
+            --json=*|--jq=*|-q=*)
                 i=$(( i + 1 )) ;;
             *)
                 filtered+=("${positional[$i]}")
@@ -230,8 +228,8 @@ cmd_pr_create() {
             --head)  [ $# -ge 2 ] || die "--head needs a value";  head="$2";  shift 2 ;;
             --base)  [ $# -ge 2 ] || die "--base needs a value";  base="$2";  shift 2 ;;
             --body)  [ $# -ge 2 ] || die "--body needs a value";  body="$2";  shift 2 ;;
-            --json|--jq) shift; if [ $# -gt 0 ]; then shift; fi ;;  # ignored (takes a value)
-            --json=*|--jq=*|-q) shift ;;                            # ignored
+            --json|--jq|-q) shift; if [ $# -gt 0 ]; then shift; fi ;;  # ignored (takes a value)
+            --json=*|--jq=*|-q=*) shift ;;                             # ignored
             *) die "unknown flag for 'pr create': $1" ;;
         esac
     done
@@ -432,8 +430,8 @@ cmd_issue_create() {
         case "$1" in
             --title) [ $# -ge 2 ] || die "--title needs a value"; title="$2"; shift 2 ;;
             --body)  [ $# -ge 2 ] || die "--body needs a value";  body="$2";  shift 2 ;;
-            --json|--jq) shift; if [ $# -gt 0 ]; then shift; fi ;;  # ignored (takes a value)
-            --json=*|--jq=*|-q) shift ;;                            # ignored
+            --json|--jq|-q) shift; if [ $# -gt 0 ]; then shift; fi ;;  # ignored (takes a value)
+            --json=*|--jq=*|-q=*) shift ;;                             # ignored
             *) die "unknown flag for 'issue create': $1" ;;
         esac
     done

@@ -195,7 +195,7 @@ class TestPrCreate:
         # --json/--jq/-q are documented as tolerated; pr create must not error on them.
         bin_dir, log = fake_curl
         result = _run(
-            ["pr", "create", "--title", "T", "--head", "topic", "--json", "number", "-q"],
+            ["pr", "create", "--title", "T", "--head", "topic", "--json", "number", "-q", ".number"],
             _env(fake_repo), bin_dir,
         )
         assert result.returncode == 0, result.stderr
@@ -271,7 +271,7 @@ class TestIssueCreate:
         # --json/--jq/-q are documented as tolerated; issue create must not error on them.
         bin_dir, log = fake_curl
         result = _run(
-            ["issue", "create", "--title", "T", "--jq", ".number", "-q"],
+            ["issue", "create", "--title", "T", "--jq", ".number", "-q", ".title"],
             _env(fake_repo), bin_dir,
         )
         assert result.returncode == 0, result.stderr
@@ -956,7 +956,7 @@ class TestIgnoredFlags:
 
     def test_q_flag_on_repo_view(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl
-        result = _run(["repo", "view", "-q"], _env(fake_repo), bin_dir)
+        result = _run(["repo", "view", "-q", ".name"], _env(fake_repo), bin_dir)
         assert result.returncode == 0, result.stderr
 
     def test_json_equals_form(self, fake_repo, fake_curl):
