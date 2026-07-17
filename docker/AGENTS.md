@@ -36,8 +36,9 @@ offset to keep them unambiguous:
 | `issue list` | merged listing | Both backends; items tagged with `_source` |
 | `repo view` | Forgejo default | `-R` for GitHub |
 
-Flags `--json`, `--jq`, and `-q` are accepted but ignored — the shim always returns
-raw API JSON.
+Flags `--json`, `--jq`, `-q`, and `--state` are accepted but ignored — the shim always
+returns raw API JSON, **except `pr diff`, which returns raw diff text**. Listing commands
+(`pr list`, `issue list`) always return open items regardless of `--state`.
 
 ## How to work
 

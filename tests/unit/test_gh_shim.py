@@ -323,9 +323,15 @@ class TestIssueList:
 
     def test_any_args_rejected(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl
-        result = _run(["issue", "list", "--state", "all"], _env(fake_repo), bin_dir)
+        result = _run(["issue", "list", "extra"], _env(fake_repo), bin_dir)
         assert result.returncode != 0
         assert "takes no arguments" in result.stderr
+
+    def test_state_flag_is_tolerated(self, fake_repo, fake_curl):
+        # #70: --state is accepted but ignored (listings return open items only).
+        bin_dir, _ = fake_curl
+        result = _run(["issue", "list", "--state", "all"], _env(fake_repo), bin_dir)
+        assert result.returncode == 0, result.stderr
 
 
 class TestGithubRouting:
@@ -842,9 +848,15 @@ class TestPrList:
 
     def test_extra_args_rejected(self, fake_repo, fake_curl):
         bin_dir, _ = fake_curl
-        result = _run(["pr", "list", "--state", "all"], _env(fake_repo), bin_dir)
+        result = _run(["pr", "list", "extra"], _env(fake_repo), bin_dir)
         assert result.returncode != 0
         assert "takes no arguments" in result.stderr
+
+    def test_state_flag_is_tolerated(self, fake_repo, fake_curl):
+        # #70: --state is accepted but ignored (listings return open items only).
+        bin_dir, _ = fake_curl
+        result = _run(["pr", "list", "--state", "all"], _env(fake_repo), bin_dir)
+        assert result.returncode == 0, result.stderr
 
 
 class TestPrChecks:

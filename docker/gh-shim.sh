@@ -190,17 +190,17 @@ parse_dash_R() {
     done
 }
 
-# Strip flags that agents commonly pass but the shim ignores (--json, --jq, -q).
-# Operates on the `positional` array set by parse_dash_R.
+# Strip flags that agents commonly pass but the shim ignores (--json, --jq, -q,
+# and --state on listings). Operates on the `positional` array set by parse_dash_R.
 strip_ignored_flags() {
     local filtered=()
     local i=0
     while [ $i -lt ${#positional[@]} ]; do
         case "${positional[$i]}" in
-            --json|--jq|-q)
+            --json|--jq|-q|--state)
                 # These take a following value (e.g. `-q <jq-expr>`) — skip it too.
                 i=$(( i + 2 )) ;;
-            --json=*|--jq=*|-q=*)
+            --json=*|--jq=*|-q=*|--state=*)
                 i=$(( i + 1 )) ;;
             *)
                 filtered+=("${positional[$i]}")
