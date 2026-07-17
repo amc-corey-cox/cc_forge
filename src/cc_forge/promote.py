@@ -195,7 +195,8 @@ def issue_metadata(config: ForgeConfig, index: int, repo_name: str) -> dict:
 
 
 def list_promotable(config: ForgeConfig, repo_name: str) -> list[dict]:
-    """Open issues and PRs, each as {kind: 'issue'|'pr', number, title}.
+    """Open issues and PRs as rich dicts (kind, number, title, body, url, dates,
+    and head/base for PRs) for a context-rich promote walk.
 
     Open == not-yet-promoted, since promoting closes the source item. Sorted by
     number so the walk order is stable.
@@ -209,9 +210,75 @@ def list_promotable(config: ForgeConfig, repo_name: str) -> list[dict]:
         raise click.ClickException(f"Forgejo unreachable at {config.forgejo_url}: {e}")
     except ForgejoError as e:
         raise click.ClickException(f"Forgejo: {e}")
-    items = [{"kind": "issue", "number": i["number"], "title": i["title"]} for i in issues]
-    items += [{"kind": "pr", "number": p["number"], "title": p["title"]} for p in prs]
+    items = [
+        {
+            "kind": "issue",
+            "number": i["number"],
+            "title": i["title"],
+            "body": i.get("body") or "",
+            "url": i.get("html_url", ""),
+            "created_at": i.get("created_at", ""),
+        }
+        for i in issues
+    ]
+    items += [
+        {
+            "kind": "pr",
+            "number": p["number"],
+            "title": p["title"],
+            "body": p.get("body") or "",
+            "url": p.get("html_url", ""),
+            "created_at": p.get("created_at", ""),
+            "head": (p.get("head") or {}).get("ref", ""),
+            "base": (p.get("base") or {}).get("ref", ""),
+        }
+        for p in prs
+    ]
     return sorted(items, key=lambda it: it["number"])
+
+
+# Markdown ATX heading: 1–6 '#' then whitespace or end of line — so "#1 ..." refs
+# and numbered lists are kept, only real headings ("## Summary") are skipped.
+_HEADING_RE = re.compile(r"#{1,6}(?:\s|$)")
+
+
+def _first_paragraph(body: str, limit: int = 200) -> str:
+    """First real text paragraph of a body: skip leading markdown headings and
+    blanks, collect until the next blank line or heading, collapse whitespace,
+    and cap the length (even a heading directly above text, no blank line)."""
+    picked: list[str] = []
+    for line in body.strip().splitlines():
+        stripped = line.strip()
+        if not stripped or _HEADING_RE.match(stripped):
+            if picked:
+                break  # a blank line or heading ends the first paragraph
+            continue   # still skipping leading blanks/headings
+        picked.append(stripped)
+    text = " ".join(picked)
+    if len(text) <= limit:
+        return text
+    if limit < 3:  # no room for the "..." — hard-cut so we never exceed limit
+        return text[:limit]
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _promotable_summary(it: dict) -> str:
+    """Context block for one promotable item: title, branch/opened-date, a
+    first-paragraph excerpt, and the Forgejo URL."""
+    lines = [f"{it['kind'].upper()} #{it['number']}: {it['title']}"]
+    meta = []
+    if it.get("head") and it.get("base"):
+        meta.append(f"{it['head']} -> {it['base']}")
+    if it.get("created_at"):
+        meta.append(f"opened {it['created_at'][:10]}")
+    if meta:
+        lines.append("   " + " | ".join(meta))
+    excerpt = _first_paragraph(it.get("body") or "")
+    if excerpt:
+        lines.append("   " + excerpt)
+    if it.get("url"):
+        lines.append("   " + it["url"])
+    return "\n".join(lines)
 
 
 def walk_promotable(
@@ -236,7 +303,7 @@ def walk_promotable(
 
     promoted: list[tuple[int, str]] = []
     for it in items:
-        echo(f"\n{it['kind'].upper()} #{it['number']}: {it['title']}")
+        echo(f"\n{_promotable_summary(it)}")
         if not confirm(f"Promote {it['kind']} #{it['number']}?"):
             continue
         try:

@@ -345,6 +345,42 @@ def test_list_promotable_merges_issues_and_prs_sorted(monkeypatch):
     assert [(i["kind"], i["number"]) for i in items] == [("issue", 3), ("pr", 7)]
 
 
+def test_first_paragraph_skips_headings_and_caps():
+    body = "## Summary\n\nExpands the shim from 4 to 8 commands.\n\nMore detail."
+    assert promote_mod._first_paragraph(body) == "Expands the shim from 4 to 8 commands."
+    capped = promote_mod._first_paragraph("x" * 250, limit=50)
+    assert len(capped) == 50 and capped.endswith("...")
+    assert promote_mod._first_paragraph("") == ""
+    # Heading directly above text (no blank line) still finds the text.
+    assert promote_mod._first_paragraph("## Summary\nExpands the shim.") == "Expands the shim."
+    # limit < 3 has no room for the ellipsis and must never exceed the limit.
+    assert promote_mod._first_paragraph("hello world", limit=2) == "he"
+    # "#1 ..." is an issue reference / numbered list, not a heading — keep it.
+    assert promote_mod._first_paragraph("#1 is the top priority.") == "#1 is the top priority."
+
+
+def test_promotable_summary_renders_context():
+    out = promote_mod._promotable_summary({
+        "kind": "pr", "number": 12, "title": "Expand gh shim",
+        "body": "## Summary\n\nDoes the thing.", "head": "feature/x", "base": "main",
+        "created_at": "2026-07-13T11:20:54-05:00", "url": "http://forge/pulls/12",
+    })
+    assert "PR #12: Expand gh shim" in out
+    assert "feature/x -> main" in out
+    assert "opened 2026-07-13" in out
+    assert "Does the thing." in out
+    assert "http://forge/pulls/12" in out
+
+
+def test_promotable_summary_minimal_item_does_not_crash():
+    # A bare item (e.g. a mocked one) renders just the title line.
+    out = promote_mod._promotable_summary({"kind": "issue", "number": 5, "title": "t"})
+    assert out == "ISSUE #5: t"
+    # An explicit None body must not crash (coerced to "").
+    out = promote_mod._promotable_summary({"kind": "issue", "number": 6, "title": "t", "body": None})
+    assert out == "ISSUE #6: t"
+
+
 def test_walk_promotes_only_confirmed_items(monkeypatch):
     _wire_repo(monkeypatch)
     monkeypatch.setattr(promote_mod, "list_promotable", lambda c, rn: [
