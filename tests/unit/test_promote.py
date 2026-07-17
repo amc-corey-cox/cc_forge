@@ -376,6 +376,9 @@ def test_promotable_summary_minimal_item_does_not_crash():
     # A bare item (e.g. a mocked one) renders just the title line.
     out = promote_mod._promotable_summary({"kind": "issue", "number": 5, "title": "t"})
     assert out == "ISSUE #5: t"
+    # An explicit None body must not crash (coerced to "").
+    out = promote_mod._promotable_summary({"kind": "issue", "number": 6, "title": "t", "body": None})
+    assert out == "ISSUE #6: t"
 
 
 def test_walk_promotes_only_confirmed_items(monkeypatch):

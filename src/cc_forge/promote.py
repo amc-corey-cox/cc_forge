@@ -273,7 +273,7 @@ def _promotable_summary(it: dict) -> str:
         meta.append(f"opened {it['created_at'][:10]}")
     if meta:
         lines.append("   " + " | ".join(meta))
-    excerpt = _first_paragraph(it.get("body", ""))
+    excerpt = _first_paragraph(it.get("body") or "")
     if excerpt:
         lines.append("   " + excerpt)
     if it.get("url"):
