@@ -237,6 +237,11 @@ def list_promotable(config: ForgeConfig, repo_name: str) -> list[dict]:
     return sorted(items, key=lambda it: it["number"])
 
 
+# Markdown ATX heading: 1–6 '#' then whitespace or end of line — so "#1 ..." refs
+# and numbered lists are kept, only real headings ("## Summary") are skipped.
+_HEADING_RE = re.compile(r"#{1,6}(?:\s|$)")
+
+
 def _first_paragraph(body: str, limit: int = 200) -> str:
     """First real text paragraph of a body: skip leading markdown headings and
     blanks, collect until the next blank line or heading, collapse whitespace,
@@ -244,7 +249,7 @@ def _first_paragraph(body: str, limit: int = 200) -> str:
     picked: list[str] = []
     for line in body.strip().splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
+        if not stripped or _HEADING_RE.match(stripped):
             if picked:
                 break  # a blank line or heading ends the first paragraph
             continue   # still skipping leading blanks/headings

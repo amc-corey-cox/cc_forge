@@ -355,6 +355,8 @@ def test_first_paragraph_skips_headings_and_caps():
     assert promote_mod._first_paragraph("## Summary\nExpands the shim.") == "Expands the shim."
     # limit < 3 has no room for the ellipsis and must never exceed the limit.
     assert promote_mod._first_paragraph("hello world", limit=2) == "he"
+    # "#1 ..." is an issue reference / numbered list, not a heading — keep it.
+    assert promote_mod._first_paragraph("#1 is the top priority.") == "#1 is the top priority."
 
 
 def test_promotable_summary_renders_context():
