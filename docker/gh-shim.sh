@@ -514,10 +514,11 @@ cmd_issue_list() {
         if [ -z "$gh_json" ] && [ -z "$fj_json" ]; then
             die "no credentials configured for either GitHub or Forgejo"
         fi
-        # Merge: tag with _source, apply offset to Forgejo items
+        # Merge: drop PRs (both backends' /issues endpoints can return them),
+        # tag with _source, apply offset to Forgejo items.
         local gh_tagged fj_tagged
-        gh_tagged=$(echo "${gh_json:-[]}" | jq '[.[]? | . + {_source: "github"}]' 2>/dev/null || echo '[]')
-        fj_tagged=$(echo "${fj_json:-[]}" | jq "[.[]? | .number += $FORGEJO_OFFSET | . + {_source: \"forgejo\"}]" 2>/dev/null || echo '[]')
+        gh_tagged=$(echo "${gh_json:-[]}" | jq '[.[]? | select(.pull_request == null) | . + {_source: "github"}]' 2>/dev/null || echo '[]')
+        fj_tagged=$(echo "${fj_json:-[]}" | jq "[.[]? | select(.pull_request == null) | .number += $FORGEJO_OFFSET | . + {_source: \"forgejo\"}]" 2>/dev/null || echo '[]')
         jq -nc --argjson gh "$gh_tagged" --argjson fj "$fj_tagged" '$gh + $fj'
     fi
 }

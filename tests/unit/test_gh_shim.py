@@ -333,6 +333,19 @@ class TestIssueList:
         result = _run(["issue", "list", "--state", "all"], _env(fake_repo), bin_dir)
         assert result.returncode == 0, result.stderr
 
+    def test_pull_requests_are_filtered_out(self, fake_repo, smart_fake_curl):
+        # GitHub (and Forgejo) /issues can return PRs; issue list must drop them.
+        bin_dir, _, set_route = smart_fake_curl
+        set_route("issues", body=(
+            '[{"number":1,"title":"real issue"},'
+            '{"number":2,"title":"actually a PR","pull_request":{"url":"x"}}]'
+        ))
+        result = _run(["issue", "list"], _env(fake_repo), bin_dir)
+        assert result.returncode == 0, result.stderr
+        titles = [i["title"] for i in json.loads(result.stdout)]
+        assert "real issue" in titles
+        assert "actually a PR" not in titles
+
 
 class TestGithubRouting:
     def test_forge_github_repo_overrides_owner(self, fake_repo, fake_curl):
