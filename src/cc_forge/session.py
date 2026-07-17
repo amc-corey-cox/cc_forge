@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import shutil
 from pathlib import Path
 
 import click
@@ -18,16 +20,67 @@ from cc_forge.docker import (
 from cc_forge.forgejo import ForgejoClient
 from cc_forge.git import (
     GitError,
+    add_all,
     add_remote,
+    commit,
     get_current_branch,
     get_remote_url,
     get_repo_name,
     get_repo_root,
     has_remote,
+    init_repo,
     is_git_repo,
     push_to_remote,
     set_remote_url,
 )
+
+
+_LOCAL_REPOS_DIR = Path.home() / ".config" / "forge" / "local-repos"
+
+
+def prepare_local_directory(source: Path) -> Path:
+    """Turn a directory of loose files into a git repo for forge.
+
+    Creates (or updates) a managed repo under ``~/.config/forge/local-repos/<name>``,
+    copies the source files into it, and commits any changes.  Returns the repo path.
+    """
+    if not source.is_dir():
+        raise click.ClickException(f"Not a directory: {source}")
+
+    # Deterministic name from full path so two dirs with the same basename
+    # (e.g. ~/work/docs and ~/personal/docs) don't collide.
+    path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]
+    repo_dir = _LOCAL_REPOS_DIR / f"{source.name}-{path_hash}"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+
+    if not is_git_repo(repo_dir):
+        init_repo(repo_dir)
+        click.echo(f"Initialized local repo at {repo_dir}")
+
+    # Clear existing non-hidden content so files deleted from source don't
+    # linger in the managed repo across runs.
+    for item in repo_dir.iterdir():
+        if item.name.startswith("."):
+            continue
+        if item.is_dir():
+            shutil.rmtree(item)
+        else:
+            item.unlink()
+
+    # Copy source files into the repo (exclude hidden files).
+    for item in source.iterdir():
+        if item.name.startswith("."):
+            continue
+        dest = repo_dir / item.name
+        if item.is_dir():
+            shutil.copytree(item, dest)
+        else:
+            shutil.copy2(item, dest)
+
+    add_all(repo_dir)
+    commit(repo_dir, "Update from local directory")
+
+    return repo_dir
 
 
 def start_session(
