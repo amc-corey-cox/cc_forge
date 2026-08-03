@@ -65,6 +65,7 @@ class TestClaudeAdapter:
         assert "host.docker.internal" in env["ANTHROPIC_BASE_URL"]
         assert env["DISABLE_PROMPT_CACHING"] == "true"
         assert env["MAX_THINKING_TOKENS"] == "0"
+        assert env["CLAUDE_CODE_SKIP_UPDATE"] == "1"
         assert "ANTHROPIC_API_KEY" not in env
 
     def test_container_env_passthrough(self):
@@ -72,6 +73,7 @@ class TestClaudeAdapter:
         env = self.adapter.container_env(config, passthrough=True)
         assert env["ANTHROPIC_BASE_URL"] == ""
         assert env["ANTHROPIC_AUTH_TOKEN"] == ""
+        assert env["CLAUDE_CODE_SKIP_UPDATE"] == "1"
         assert "ANTHROPIC_API_KEY" not in env
 
     def test_container_env_passthrough_with_api_key(self):
@@ -102,3 +104,4 @@ class TestAiderAdapter:
         env = self.adapter.container_env(config, passthrough=False)
         assert env["ANTHROPIC_AUTH_TOKEN"] == "ollama"
         assert "host.docker.internal" in env["ANTHROPIC_BASE_URL"]
+        assert env["CLAUDE_CODE_SKIP_UPDATE"] == "1"
