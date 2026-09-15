@@ -38,6 +38,14 @@ from cc_forge.git import (
 _LOCAL_REPOS_DIR = Path.home() / ".config" / "forge" / "local-repos"
 
 
+def _display_path(path: Path) -> str:
+    """Render *path* with ``$HOME`` collapsed to ``~`` so logs carry no username."""
+    try:
+        return f"~/{path.relative_to(Path.home())}"
+    except ValueError:
+        return str(path)
+
+
 def _excluded(path: Path) -> bool:
     """Whether *path* is kept out of the managed repo.
 
@@ -72,7 +80,7 @@ def prepare_local_directory(source: Path) -> Path:
 
     if not is_git_repo(repo_dir):
         init_repo(repo_dir)
-        click.echo(f"Initialized local repo at {repo_dir}")
+        click.echo(f"Initialized local repo at {_display_path(repo_dir)}")
 
     # Clear existing non-hidden content so files deleted from source don't
     # linger in the managed repo across runs.
@@ -145,13 +153,16 @@ def start_session(
             click.echo(f"Creating {visibility}repository {owner}/{repo_name} on Forgejo...")
             forgejo.create_repo(repo_name, private=private)
         elif private and not forgejo.get_repo(owner, repo_name).get("private"):
-            # Pre-existing public repo: we don't silently change its visibility,
-            # but a local-only session must not push into it unnoticed.
+            # Don't silently change an existing repo's visibility -- but don't
+            # push private files into a public one either. Stop and let the
+            # operator decide.
             click.echo(
-                f"Warning: {owner}/{repo_name} already exists on Forgejo and is "
-                "PUBLIC. Make it private in Forgejo before pushing private files.",
+                f"Error: {owner}/{repo_name} already exists on Forgejo and is public.\n"
+                "Refusing to push a local-only session into a public repository.\n"
+                "Make it private in Forgejo, then re-run.",
                 err=True,
             )
+            raise SystemExit(1)
 
         clone_url = forgejo.get_repo_clone_url(owner, repo_name)
 

@@ -109,4 +109,9 @@ def commit(path: str | Path, message: str) -> None:
     )
     if result.returncode == 0:
         return  # Nothing staged
+    if result.returncode > 1:
+        # 1 means "there are staged changes"; anything higher is a real error.
+        raise GitError(
+            f"git diff --cached failed: {result.stderr.decode(errors='replace').strip()}"
+        )
     _run(["commit", "-m", message], cwd=path)

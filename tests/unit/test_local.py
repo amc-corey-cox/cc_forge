@@ -141,6 +141,17 @@ def test_local_requests_private_forgejo_repo(
     assert captured["passthrough"] is False
 
 
+def test_display_path_hides_home(tmp_path: Path) -> None:
+    """Managed-repo paths are logged with $HOME collapsed, never a bare username."""
+    from cc_forge.session import _display_path
+
+    inside = Path.home() / ".config" / "forge" / "local-repos" / "docs-abc123"
+    assert _display_path(inside) == "~/.config/forge/local-repos/docs-abc123"
+    assert str(Path.home()) not in _display_path(inside)
+    # Paths outside $HOME are returned unchanged rather than mangled
+    assert _display_path(tmp_path) == str(tmp_path)
+
+
 def test_prepare_rejects_file(tmp_path: Path) -> None:
     f = tmp_path / "not-a-dir.txt"
     f.write_text("hello")
