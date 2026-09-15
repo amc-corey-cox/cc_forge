@@ -66,6 +66,9 @@ ENV OLLAMA_HOST="http://forge-ollama-proxy:11434"
 ENV ANTHROPIC_AUTH_TOKEN="ollama"
 ENV ANTHROPIC_BASE_URL="http://forge-ollama-proxy:11434"
 
+# Claude Code: skip auto-update (agent user can't write to npm global prefix)
+ENV CLAUDE_CODE_SKIP_UPDATE="1"
+
 # Git configuration
 RUN git config --global user.name "Forge Agent" && \
     git config --global user.email "agent@forge.local" && \
