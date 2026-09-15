@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -168,6 +169,17 @@ def test_rerun_clears_symlink_in_managed_repo(source_dir: Path, tmp_path: Path) 
 
     assert not (repo / "dangling-dir").exists()
     assert target.exists(), "clearing the link must not delete its target"
+
+
+def test_rerun_clears_non_regular_file(source_dir: Path) -> None:
+    """Anything that isn't a real directory unlinks -- rmtree would raise on a FIFO."""
+    repo = prepare_local_directory(source_dir)
+    fifo = repo / "a-fifo"
+    os.mkfifo(fifo)
+
+    prepare_local_directory(source_dir)
+
+    assert not fifo.exists()
 
 
 def test_skipped_entries_are_reported(

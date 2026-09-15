@@ -116,8 +116,9 @@ def prepare_local_directory(source: Path) -> Path:
     for item in repo_dir.iterdir():
         if item.name == ".git":
             continue
-        # is_dir() follows symlinks and rmtree() refuses them, so test this first
-        if item.is_symlink() or item.is_file():
+        # Symlinks first: is_dir() follows them and rmtree() refuses them.
+        # Everything that isn't a real directory (files, FIFOs, sockets) unlinks.
+        if item.is_symlink() or not item.is_dir():
             item.unlink()
         else:
             shutil.rmtree(item)
