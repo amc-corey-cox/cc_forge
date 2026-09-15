@@ -89,11 +89,15 @@ def create_branch_from_ref(path: str | Path, branch: str, start_ref: str) -> Non
 def init_repo(path: str | Path) -> None:
     """Initialize a new git repo at *path* (must already exist)."""
     _run(["init"], cwd=path)
+    # Managed repos are forge-owned, so give them a local identity rather than
+    # relying on the host having a global one configured.
+    _run(["config", "user.name", "Forge"], cwd=path)
+    _run(["config", "user.email", "forge@forge.local"], cwd=path)
 
 
 def add_all(path: str | Path) -> None:
-    """Stage all files in the working tree."""
-    _run(["add", "."], cwd=path)
+    """Stage all changes in the working tree, including deletions."""
+    _run(["add", "-A"], cwd=path)
 
 
 def commit(path: str | Path, message: str) -> None:

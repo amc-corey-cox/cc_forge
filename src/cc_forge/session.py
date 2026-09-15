@@ -38,11 +38,28 @@ from cc_forge.git import (
 _LOCAL_REPOS_DIR = Path.home() / ".config" / "forge" / "local-repos"
 
 
+def _excluded(path: Path) -> bool:
+    """Whether *path* is kept out of the managed repo.
+
+    Symlinks are dropped rather than followed: this command exists for files
+    that must not leave the machine, and a link can resolve outside the source
+    tree entirely.
+    """
+    return path.name.startswith(".") or path.is_symlink()
+
+
+def _ignore_excluded(dirpath: str, names: list[str]) -> set[str]:
+    """``shutil.copytree`` filter applying :func:`_excluded` at every level."""
+    base = Path(dirpath)
+    return {name for name in names if _excluded(base / name)}
+
+
 def prepare_local_directory(source: Path) -> Path:
     """Turn a directory of loose files into a git repo for forge.
 
-    Creates (or updates) a managed repo under ``~/.config/forge/local-repos/<name>``,
-    copies the source files into it, and commits any changes.  Returns the repo path.
+    Creates (or updates) a managed repo under
+    ``~/.config/forge/local-repos/<name>-<hash>``, copies the source files into
+    it, and commits any changes.  Returns the repo path.
     """
     if not source.is_dir():
         raise click.ClickException(f"Not a directory: {source}")
@@ -67,13 +84,14 @@ def prepare_local_directory(source: Path) -> Path:
         else:
             item.unlink()
 
-    # Copy source files into the repo (exclude hidden files).
+    # Copy source files into the repo (hidden entries and symlinks are
+    # excluded at every level, not just the top).
     for item in source.iterdir():
-        if item.name.startswith("."):
+        if _excluded(item):
             continue
         dest = repo_dir / item.name
         if item.is_dir():
-            shutil.copytree(item, dest)
+            shutil.copytree(item, dest, ignore=_ignore_excluded)
         else:
             shutil.copy2(item, dest)
 

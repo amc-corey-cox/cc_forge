@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
+import click
 import pytest
 
 from cc_forge.git import is_git_repo
@@ -45,8 +47,35 @@ def test_prepare_copies_files(source_dir: Path) -> None:
 
 def test_prepare_skips_hidden_files(source_dir: Path) -> None:
     (source_dir / ".secret").write_text("hidden")
+    (source_dir / "subdir" / ".nested-secret").write_text("also hidden")
+    hidden_dir = source_dir / ".hidden-dir"
+    hidden_dir.mkdir()
+    (hidden_dir / "inside.txt").write_text("should not be copied")
+
     repo = prepare_local_directory(source_dir)
+
     assert not (repo / ".secret").exists()
+    assert not (repo / "subdir" / ".nested-secret").exists()
+    assert not (repo / ".hidden-dir").exists()
+
+
+def test_prepare_excludes_symlinks(source_dir: Path, tmp_path: Path) -> None:
+    """Symlinks are dropped, not followed — they can resolve outside the source."""
+    outside = tmp_path / "outside-secret.txt"
+    outside.write_text("must not leave the machine")
+    (source_dir / "link.txt").symlink_to(outside)
+    (source_dir / "subdir" / "nested-link.txt").symlink_to(outside)
+
+    repo = prepare_local_directory(source_dir)
+
+    assert not (repo / "link.txt").exists()
+    assert not (repo / "subdir" / "nested-link.txt").exists()
+    copied = [
+        p.read_text()
+        for p in repo.rglob("*")
+        if p.is_file() and ".git" not in p.relative_to(repo).parts
+    ]
+    assert "must not leave the machine" not in copied
 
 
 def test_prepare_is_idempotent(source_dir: Path) -> None:
@@ -65,6 +94,11 @@ def test_prepare_removes_deleted_source_files(source_dir: Path) -> None:
     (source_dir / "notes.txt").unlink()
     prepare_local_directory(source_dir)
     assert not (repo / "notes.txt").exists()
+    # The deletion must also be committed, not just applied to the working tree
+    tracked = subprocess.run(
+        ["git", "ls-files"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert "notes.txt" not in tracked
 
 
 def test_prepare_distinct_repos_for_same_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,5 +124,5 @@ def test_prepare_distinct_repos_for_same_name(tmp_path: Path, monkeypatch: pytes
 def test_prepare_rejects_file(tmp_path: Path) -> None:
     f = tmp_path / "not-a-dir.txt"
     f.write_text("hello")
-    with pytest.raises(Exception):
+    with pytest.raises(click.ClickException):
         prepare_local_directory(f)
