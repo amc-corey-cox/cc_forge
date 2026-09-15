@@ -69,6 +69,7 @@ def _ollama_environment(config: ForgeConfig) -> dict[str, str]:
         "API_TIMEOUT_MS": "3600000",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+        "CLAUDE_CODE_SKIP_UPDATE": "1",
         "MAX_THINKING_TOKENS": "0",
     }
 
