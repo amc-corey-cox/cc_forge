@@ -65,6 +65,10 @@ def local(directory: str, agent: str) -> None:
     Copies files into a managed git repo, pushes to local Forgejo, and
     launches an agent session backed by local Ollama only.  Cloud
     credentials are never injected.
+
+    Hidden entries (dotfiles and dot-directories) and symlinks are not copied;
+    anything skipped is reported.  This mode is for directories of loose files,
+    not for git repos or system directories.
     """
     from pathlib import Path
 

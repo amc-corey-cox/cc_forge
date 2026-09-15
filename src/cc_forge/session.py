@@ -56,10 +56,34 @@ def _excluded(path: Path) -> bool:
     return path.name.startswith(".") or path.is_symlink()
 
 
-def _ignore_excluded(dirpath: str, names: list[str]) -> set[str]:
-    """``shutil.copytree`` filter applying :func:`_excluded` at every level."""
-    base = Path(dirpath)
-    return {name for name in names if _excluded(base / name)}
+def _format_skipped(names: list[str], limit: int = 5) -> str:
+    shown = ", ".join(names[:limit])
+    return shown + (f" (+{len(names) - limit} more)" if len(names) > limit else "")
+
+
+def _warn_skipped(source: Path, skipped: list[Path]) -> None:
+    """Report what wasn't copied -- silently dropping a user's files is worse."""
+    rel = sorted(p.relative_to(source).as_posix() for p in skipped)
+    hidden = [name for name in rel if Path(name).name.startswith(".")]
+    links = [name for name in rel if name not in hidden]
+
+    if hidden:
+        click.echo(
+            f"Skipped {len(hidden)} hidden entr{'y' if len(hidden) == 1 else 'ies'}: "
+            f"{_format_skipped(hidden)}",
+            err=True,
+        )
+        click.echo(
+            "  'forge local' is for directories of loose files -- git repos and "
+            "system directories aren't supported.",
+            err=True,
+        )
+    if links:
+        click.echo(
+            f"Skipped {len(links)} symlink{'' if len(links) == 1 else 's'}: "
+            f"{_format_skipped(links)}",
+            err=True,
+        )
 
 
 def prepare_local_directory(source: Path) -> Path:
@@ -68,6 +92,10 @@ def prepare_local_directory(source: Path) -> Path:
     Creates (or updates) a managed repo under
     ``~/.config/forge/local-repos/<name>-<hash>``, copies the source files into
     it, and commits any changes.  Returns the repo path.
+
+    Hidden entries and symlinks are not copied, and any that are found are
+    reported.  This is for directories of loose files -- not git repos or
+    system directories.
     """
     if not source.is_dir():
         raise click.ClickException(f"Not a directory: {_display_path(source)}")
@@ -82,26 +110,40 @@ def prepare_local_directory(source: Path) -> Path:
         init_repo(repo_dir)
         click.echo(f"Initialized local repo at {_display_path(repo_dir)}")
 
-    # Clear existing non-hidden content so files deleted from source don't
-    # linger in the managed repo across runs.
+    # Clear everything except .git, so the repo ends up matching the source
+    # exactly -- anything else lingering here would still be committed by
+    # add_all() on the next run.
     for item in repo_dir.iterdir():
-        if item.name.startswith("."):
+        if item.name == ".git":
             continue
-        if item.is_dir():
-            shutil.rmtree(item)
-        else:
+        # is_dir() follows symlinks and rmtree() refuses them, so test this first
+        if item.is_symlink() or item.is_file():
             item.unlink()
+        else:
+            shutil.rmtree(item)
 
     # Copy source files into the repo (hidden entries and symlinks are
     # excluded at every level, not just the top).
+    skipped: list[Path] = []
+
+    def _ignore(dirpath: str, names: list[str]) -> set[str]:
+        base = Path(dirpath)
+        dropped = {name for name in names if _excluded(base / name)}
+        skipped.extend(base / name for name in dropped)
+        return dropped
+
     for item in source.iterdir():
         if _excluded(item):
+            skipped.append(item)
             continue
         dest = repo_dir / item.name
         if item.is_dir():
-            shutil.copytree(item, dest, ignore=_ignore_excluded)
+            shutil.copytree(item, dest, ignore=_ignore)
         else:
             shutil.copy2(item, dest)
+
+    if skipped:
+        _warn_skipped(source, skipped)
 
     add_all(repo_dir)
     commit(repo_dir, "Update from local directory")

@@ -141,6 +141,54 @@ def test_local_requests_private_forgejo_repo(
     assert captured["passthrough"] is False
 
 
+def test_rerun_clears_stray_dotfiles_from_managed_repo(source_dir: Path) -> None:
+    """Anything but .git is cleared, or add_all() would commit it on the next run."""
+    repo = prepare_local_directory(source_dir)
+    stray = repo / ".leftover"
+    stray.write_text("should not survive")
+    stray_dir = repo / ".leftover-dir"
+    stray_dir.mkdir()
+    (stray_dir / "inner.txt").write_text("nor this")
+
+    prepare_local_directory(source_dir)
+
+    assert not stray.exists()
+    assert not stray_dir.exists()
+    assert is_git_repo(repo), ".git must survive the clear"
+
+
+def test_rerun_clears_symlink_in_managed_repo(source_dir: Path, tmp_path: Path) -> None:
+    """A symlink-to-directory must not crash the clear loop (rmtree refuses them)."""
+    repo = prepare_local_directory(source_dir)
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (repo / "dangling-dir").symlink_to(target, target_is_directory=True)
+
+    prepare_local_directory(source_dir)
+
+    assert not (repo / "dangling-dir").exists()
+    assert target.exists(), "clearing the link must not delete its target"
+
+
+def test_skipped_entries_are_reported(
+    source_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Dropping a user's files silently is worse than the noise of saying so."""
+    (source_dir / ".topsecret").write_text("hidden")
+    (source_dir / "subdir" / ".nested").write_text("also hidden")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("elsewhere")
+    (source_dir / "link.txt").symlink_to(outside)
+
+    prepare_local_directory(source_dir)
+
+    err = capsys.readouterr().err
+    assert "Skipped 2 hidden entries" in err
+    assert ".topsecret" in err and "subdir/.nested" in err
+    assert "Skipped 1 symlink" in err and "link.txt" in err
+    assert "loose files" in err
+
+
 def test_display_path_hides_home(tmp_path: Path) -> None:
     """Managed-repo paths are logged with $HOME collapsed, never a bare username."""
     from cc_forge.session import _display_path
