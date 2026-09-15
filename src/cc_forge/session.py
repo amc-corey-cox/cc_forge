@@ -107,8 +107,13 @@ def start_session(
     agent: str,
     adapter: AgentAdapter,
     passthrough: bool = False,
+    private: bool = False,
 ) -> None:
-    """Run the full forge session flow."""
+    """Run the full forge session flow.
+
+    *private* creates the Forgejo repo as private -- used by ``forge local``,
+    whose whole premise is files that must not be shared.
+    """
     path = Path(repo_path).resolve()
 
     # 1. Validate git repo
@@ -136,8 +141,17 @@ def start_session(
 
         # 4. Ensure repo exists on Forgejo
         if not forgejo.repo_exists(owner, repo_name):
-            click.echo(f"Creating repository {owner}/{repo_name} on Forgejo...")
-            forgejo.create_repo(repo_name)
+            visibility = "private " if private else ""
+            click.echo(f"Creating {visibility}repository {owner}/{repo_name} on Forgejo...")
+            forgejo.create_repo(repo_name, private=private)
+        elif private and not forgejo.get_repo(owner, repo_name).get("private"):
+            # Pre-existing public repo: we don't silently change its visibility,
+            # but a local-only session must not push into it unnoticed.
+            click.echo(
+                f"Warning: {owner}/{repo_name} already exists on Forgejo and is "
+                "PUBLIC. Make it private in Forgejo before pushing private files.",
+                err=True,
+            )
 
         clone_url = forgejo.get_repo_clone_url(owner, repo_name)
 

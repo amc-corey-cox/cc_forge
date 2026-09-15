@@ -121,6 +121,26 @@ def test_prepare_distinct_repos_for_same_name(tmp_path: Path, monkeypatch: pytes
     assert (repo_b / "file.txt").read_text() == "from b"
 
 
+def test_local_requests_private_forgejo_repo(
+    source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """forge local must create its Forgejo repo private -- the feature's premise."""
+    import cc_forge.config as config_mod
+    import cc_forge.session as session_mod
+    from cc_forge.cli import local
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        session_mod, "start_session", lambda config, **kwargs: captured.update(kwargs)
+    )
+    monkeypatch.setattr(config_mod, "load_config", lambda: None)
+
+    local.callback(directory=str(source_dir), agent="aider")
+
+    assert captured["private"] is True
+    assert captured["passthrough"] is False
+
+
 def test_prepare_rejects_file(tmp_path: Path) -> None:
     f = tmp_path / "not-a-dir.txt"
     f.write_text("hello")

@@ -75,7 +75,14 @@ def local(directory: str, agent: str) -> None:
     adapter = REGISTRY[agent]
     cfg = load_config()
     repo_path = prepare_local_directory(Path(directory))
-    start_session(cfg, repo_path=str(repo_path), agent=agent, adapter=adapter, passthrough=False)
+    start_session(
+        cfg,
+        repo_path=str(repo_path),
+        agent=agent,
+        adapter=adapter,
+        passthrough=False,
+        private=True,
+    )
 
 
 def _walk(cfg, repo: str, remote: str, kinds: tuple[str, ...]) -> None:
