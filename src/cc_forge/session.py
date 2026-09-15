@@ -70,7 +70,7 @@ def prepare_local_directory(source: Path) -> Path:
     it, and commits any changes.  Returns the repo path.
     """
     if not source.is_dir():
-        raise click.ClickException(f"Not a directory: {source}")
+        raise click.ClickException(f"Not a directory: {_display_path(source)}")
 
     # Deterministic name from full path so two dirs with the same basename
     # (e.g. ~/work/docs and ~/personal/docs) don't collide.

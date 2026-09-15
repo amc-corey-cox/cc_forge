@@ -152,8 +152,16 @@ def test_display_path_hides_home(tmp_path: Path) -> None:
     assert _display_path(tmp_path) == str(tmp_path)
 
 
-def test_prepare_rejects_file(tmp_path: Path) -> None:
-    f = tmp_path / "not-a-dir.txt"
+def test_prepare_rejects_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rejects non-directories, and the message carries no absolute home path."""
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    f = fake_home / "not-a-dir.txt"
     f.write_text("hello")
-    with pytest.raises(click.ClickException):
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+    with pytest.raises(click.ClickException) as exc:
         prepare_local_directory(f)
+
+    assert str(fake_home) not in str(exc.value)
+    assert "~/not-a-dir.txt" in str(exc.value)
