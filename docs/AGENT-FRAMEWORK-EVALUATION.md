@@ -7,7 +7,7 @@ Evaluation of AI coding assistant frameworks for cc_forge's local-first MVP.
 ## Executive Summary
 
 > **Status (2026-06): Claude Code is cc_forge's shipped default agent** — run against
-> local Ollama (default model `qwen3-coder-32k`), or the Anthropic API via
+> local Ollama (default model `qwen3-coder-64k`, set via `FORGE_AGENT_MODEL`), or the Anthropic API via
 > `forge run --claude`. Aider is a supported, first-class alternative
 > (`forge run --agent aider`) and an active line of exploration — especially for the
 > multi-agent teams and for models where a diff-based workflow beats Claude Code's. Treat

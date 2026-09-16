@@ -50,7 +50,7 @@ class TestClaudeAdapter:
     def test_build_cmd_default_model(self):
         config = _make_config(agent_model=AGENT_MODEL_DEFAULT)
         cmd = self.adapter.build_cmd(config, passthrough=False)
-        assert cmd == ["claude", "--dangerously-skip-permissions", "--model", "qwen3-coder-32k"]
+        assert cmd == ["claude", "--dangerously-skip-permissions", "--model", "qwen3-coder-64k"]
 
     def test_build_cmd_passthrough(self):
         config = _make_config(agent_model="qwen3-coder-32k")
@@ -97,7 +97,7 @@ class TestAiderAdapter:
     def test_build_cmd_default_model(self):
         config = _make_config(agent_model=AGENT_MODEL_DEFAULT)
         cmd = self.adapter.build_cmd(config, passthrough=False)
-        assert cmd == ["aider", "--model", "ollama/qwen3-coder-32k"]
+        assert cmd == ["aider", "--model", "ollama/qwen3-coder-64k"]
 
     def test_container_env_is_ollama(self):
         config = _make_config()

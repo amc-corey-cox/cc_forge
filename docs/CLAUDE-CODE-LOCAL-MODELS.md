@@ -3,7 +3,7 @@
 How Claude Code performs against local Ollama models, and which ones we recommend. Part of the [Track 1 evaluation](https://github.com/amc-corey-cox/cc_forge/issues) of the agent-architecture exploration.
 
 > **Status:** Screening matrices 1 (2026-06-17), matrix 2 (2026-06-18), and post-Ollama-upgrade observations (2026-06-18) complete. Headline results:
-> - `qwen3-coder-32k` and `qwen3-coder-64k` both meaningfully drive Claude Code (the 64k variant was probed after the upgrade).
+> - `qwen3-coder-64k` is the default (switched 2026-09-16 on context-budget grounds, see the final section); `qwen3-coder-32k` also drives Claude Code and was the previous default.
 > - Forge UX improved dramatically: 0.30.10 + GPU offload made the eval suite ~10x faster (~3 hours → ~17 min). Cost-model section below is now stale for the 0.30.10 era.
 > - The "Ollama upgrade fixes Devstral/Granite" hypothesis was tested and **falsified** — their single-turn narration failure mode is unchanged across versions. See "Post-Ollama-upgrade observations" for the full retest.
 
@@ -54,6 +54,8 @@ Eval harness invocation: `MODELS="qwen3-coder-32k gpt-oss:20b gpt-oss-64k" ./scr
 ### What this changes about the recommendation
 
 `qwen3-coder-32k` stays as the default `FORGE_CLAUDE_MODEL` in `src/cc_forge/config.py`. The other two are not viable replacements for this combination of (Claude Code harness, CPU-only host, our task set). The next eval pass (probably issue #54, cloud Ollama services) is where we'd test whether the same models become viable with more compute behind them, or whether something like `qwen3-coder-32k` running on a faster backend gives a meaningful speed-up.
+
+*(Superseded 2026-09-16 — the default is now `qwen3-coder-64k`. See "Default switched to qwen3-coder-64k" at the end of this document. `FORGE_CLAUDE_MODEL` was the env var name at the time; it is now `FORGE_AGENT_MODEL`, with the old name still honoured as a fallback.)*
 
 ## Results — screening matrix 2 (2026-06-18)
 
@@ -125,6 +127,8 @@ The first attempt to run matrix 2 incorrectly skipped `devstral:24b` despite its
 
 Nothing. `qwen3-coder-32k` remains the default `FORGE_CLAUDE_MODEL`. The candidates that ran in matrix 2 (Devstral, Granite) failed in a way that suggests an Ollama-side or model-side tool-call format mismatch rather than something a different prompt or harness tweak would unlock. The next eval pass (issue #54, cloud Ollama services) is where we'd test whether the same models become viable with a different inference backend that handles tool calls differently.
 
+*(Superseded 2026-09-16 — the default is now `qwen3-coder-64k`. See "Default switched to qwen3-coder-64k" at the end of this document.)*
+
 ## Results — Post-Ollama-upgrade observations (2026-06-18)
 
 After upgrading the forge host's Ollama from 0.15.4 to 0.30.10 (procedure in [`LOCAL-OLLAMA-SETUP.md`](LOCAL-OLLAMA-SETUP.md#cleaner-alternative-upgrade-by-tarball-extraction)), a `qwen3-coder-32k` smoke-test probe, a re-run of the matrix 2 candidates, and a probe of the never-tested `qwen3-coder-64k` variant produced findings that revise both the cost model and the matrix 2 interpretation.
@@ -193,7 +197,7 @@ Never tested in matrix 1 or 2. Pulled but skipped. Probed against 02-fix-typo + 
 
 ### What this changes about the recommendation
 
-- **`qwen3-coder-32k` stays as the default `FORGE_CLAUDE_MODEL`.** Now with a much better UX — 17-minute task suite instead of 3-hour. The "session looks hung for half an hour" pain is gone.
+- **`qwen3-coder-32k` stays as the default `FORGE_CLAUDE_MODEL`.** Now with a much better UX — 17-minute task suite instead of 3-hour. The "session looks hung for half an hour" pain is gone. *(Superseded 2026-09-16 — see "Default switched to qwen3-coder-64k" below.)*
 - **`qwen3-coder-64k` is now a documented alternative** for anyone wanting more context room. Slightly more VRAM pressure, slightly slower per task, but it works.
 - **Devstral, Granite, Gemma 4 remain unusable for this harness.** The "upgrade fixes everything" gamble didn't pay off for the tool-call failures. Issue #54 (cloud Ollama) is the remaining experiment — if the failure is Ollama's Anthropic API translation rather than the model itself, a different backend (possibly OpenAI-compatible) might handle these models' native tool-call format.
 - **The cost model in this doc and `scripts/eval/README.md` is wrong post-upgrade.** Anyone reading those needs to know the numbers came from the 0.15.4/CPU-only era. Follow-up worth doing: separate "historical CPU-only" from "current GPU-assisted" framings, so we don't strand readers on outdated numbers.
@@ -230,3 +234,60 @@ Models we exercised as matrix candidates against Claude Code's harness and shown
 | `phi4:14b` | No `tools` capability in Ollama manifest | Matrix 2 pre-flight |
 
 The Devstral / Granite failure mode is `exit_code 0`, `num_turns: 1`, model emits a polite acknowledgment ("I'll help you fix that, let me look at the file…") and then never issues a tool call. Identical pattern pre- and post-upgrade — the Ollama 0.30.10 swap to llama.cpp's chat-template handling didn't change it, falsifying the "stale template was the bottleneck" hypothesis. Whatever's breaking the tool-call path lives in Ollama's Anthropic Messages API translation or in how these models emit tool calls natively — not in the model loader. See the post-upgrade observations section above for details.
+
+## Default switched to qwen3-coder-64k (2026-09-16)
+
+The recommendation above ("32k stays default, 64k is a documented alternative") was made
+without knowing how much of the context window Claude Code's harness consumes before any
+work starts. Measured by pointing `ANTHROPIC_BASE_URL` at a capture server instead of
+Ollama and tokenizing the request with qwen3's own tokenizer via `prompt_eval_count`:
+
+| Component | Tokens | Chars |
+|-----------|-------:|------:|
+| System prompt | 2,677 | 13,043 |
+| 17 tool definitions | 14,086 | 60,722 |
+| Messages (`-p "hi"`) | ~500 | 2,181 |
+| **Floor per request** | **~17,300** | **75,711** |
+
+Measured on Claude Code 2.1.47 in the agent image, with forge's four trim flags already
+set (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`,
+`MAX_THINKING_TOKENS=0`, `CLAUDE_CODE_SKIP_UPDATE`).
+
+Two things follow. First, **the tool schemas are 84% of the overhead** — the system prompt
+everyone assumes is the problem is only 16% of it, and there is no supported way to trim
+the tool set. Second, at `num_ctx 32768` that floor eats **~53% of the window before the
+agent reads a file**, leaving ~15k for the repo map, file contents, conversation, and
+output. At 64k the same floor is ~26%, roughly tripling usable working context.
+
+`qwen3-coder`'s trained context is 262,144; the 32k and 64k figures are `num_ctx` settings
+in our Modelfiles, not model limits. Larger windows are available if VRAM allows.
+
+### Full matrix run (run id `20260916T141054Z`)
+
+The earlier 64k evidence was 2 of 6 tasks. The full matrix has now been run, so the new
+default rests on the same footing as the old one — better, since the task set has grown
+by one since matrix 1.
+
+| Task | Result | Duration | Turns |
+|------|--------|---------:|------:|
+| 01-sanity-pong | (probe) | 3s | 1 |
+| 02-fix-typo | pass | 263s | 3 |
+| 03-add-docstring | pass | 269s | 4 |
+| 04-rename-variable | pass | 305s | 5 |
+| 05-fix-failing-test | pass | 312s | 6 |
+| 06-implement-from-stub | pass | 335s | 6 |
+| 07-fix-bug-from-traceback | pass | 348s | 8 |
+
+**6/6 scored tasks pass**, all `exit_code 0`, `is_error false`. Warmup 247s. Turn counts of
+3–8 confirm real multi-turn tool-calling loops rather than the single-turn narration that
+sank Devstral and Granite; the sanity probe is correctly 1 turn.
+
+`07-fix-bug-from-traceback` did not exist for matrices 1 and 2, so the like-for-like
+comparison against 32k's 5/5 is tasks 02–06, which 64k also passes 5/5.
+
+**The cost is speed.** Tasks 01–06 took ~25 min against the ~17 min documented for 32k on
+the same hardware — roughly 45% slower, from the longer KV prefill at 64k context. That is
+the trade: a slower suite in exchange for roughly triple the usable working context.
+
+For aider the calculus is different and this change matters far less — aider's entire
+request for a small edit was 745 tokens, roughly 4% of Claude Code's floor.

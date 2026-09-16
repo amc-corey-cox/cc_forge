@@ -201,7 +201,7 @@ directory, or environment variables (which take precedence). The common ones:
 | `FORGE_FORGEJO_TOKEN` | *(required)* | Forgejo API token |
 | `FORGE_FORGEJO_URL` | `http://localhost:3000` | Forgejo instance URL |
 | `FORGE_AGENT_API_KEY` | *(empty)* | API key for `--passthrough` mode (also honors `ANTHROPIC_API_KEY`) |
-| `FORGE_AGENT_MODEL` | `qwen3-coder-32k` | Model for the agent in Ollama mode |
+| `FORGE_AGENT_MODEL` | `qwen3-coder-64k` | Model for the agent in Ollama mode |
 | `FORGE_GITHUB_TOKEN` | *(empty)* | GitHub token — for the agent's GitHub reads, and for promote when `gh` isn't authed |
 | `FORGE_GITHUB_REPO` | *(empty)* | GitHub `owner/repo` for single-machine promote (or set `FORGE_GITHUB_OWNER`) |
 | `FORGE_GITHUB_OWNER` | *(empty)* | GitHub owner; repo name derived from the local directory |
