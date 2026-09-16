@@ -9,21 +9,25 @@
 agent_bootstrap() {
     local agent="$1" ollama_url="$2" model="$3"
     [ "$agent" = "opencode" ] || return 0
-    # OpenCode reads provider config from a file rather than env vars.
+    # OpenCode reads provider config from a file rather than env vars. Built with
+    # jq so a model name or URL containing a quote or backslash can't produce
+    # invalid JSON -- unlikely with Ollama names, but it would fail obscurely.
+    local config
+    config=$(jq -n --arg url "$ollama_url/v1" --arg model "$model" '{
+        permission: { bash: "allow", edit: "allow", webfetch: "allow" },
+        provider: {
+            ollama: {
+                npm: "@ai-sdk/openai-compatible",
+                name: "Ollama",
+                options: { baseURL: $url },
+                models: { ($model): { name: $model } }
+            }
+        }
+    }')
     cat <<EOF
 mkdir -p \$HOME/.config/opencode
 cat > \$HOME/.config/opencode/opencode.json <<'OCJSON'
-{
-  "permission": { "bash": "allow", "edit": "allow", "webfetch": "allow" },
-  "provider": {
-    "ollama": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Ollama",
-      "options": { "baseURL": "$ollama_url/v1" },
-      "models": { "$model": { "name": "$model" } }
-    }
-  }
-}
+$config
 OCJSON
 EOF
 }

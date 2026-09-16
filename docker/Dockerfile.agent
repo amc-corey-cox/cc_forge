@@ -26,6 +26,12 @@ RUN apt-get update && apt-get install -y \
 # Install Claude Code (globally via npm, available to all users)
 RUN npm install -g @anthropic-ai/claude-code
 
+# OpenCode, pinned so image builds are reproducible. The npm package is a thin
+# wrapper that fetches a platform binary in postinstall, so it needs no newer
+# Node than the base image ships. Installed as root like Claude Code, since the
+# global npm prefix isn't writable by the agent user.
+RUN npm install -g opencode-ai@1.18.31 && opencode --version
+
 # Patch Claude Code: strip ?beta=true query params that Ollama rejects with 404/500.
 # CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 doesn't reliably strip query params in all versions.
 # NOTE: This sed-based patch is a temporary workaround pending upstream support for
@@ -50,13 +56,9 @@ RUN userdel -r ubuntu 2>/dev/null; \
 
 # Install tools for the agent user
 USER agent
-ENV PATH="/home/agent/.opencode/bin:/home/agent/.local/bin:$PATH"
+ENV PATH="/home/agent/.local/bin:$PATH"
 RUN pipx install aider-chat
 
-# OpenCode: prebuilt binary rather than npm, which wants a newer Node than the
-# base image ships.
-RUN curl -fsSL https://opencode.ai/install | bash && \
-    /home/agent/.opencode/bin/opencode --version
 
 # Forgejo connection — token injected via .git-credentials, not env vars.
 # FORGEJO_URL and FORGEJO_TOKEN kept as empty defaults for manual docker run only.

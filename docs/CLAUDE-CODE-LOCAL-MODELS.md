@@ -316,10 +316,12 @@ Code versus 11% for OpenCode.
 
 ### Results — OpenCode matrix (run `20260916T204313Z`)
 
-All 7 tasks, same hardware, `AGENT=opencode`.
+All 7 tasks, same hardware, `AGENT=opencode`. `01-sanity-pong` is an
+unscored reachability probe, so pass rates are out of the 6 scored tasks.
 
 | Task | qwen3-coder-64k | devstral:24b | granite4.1:8b |
 |------|-----------------|--------------|---------------|
+| 01-sanity-pong | (probe) 10s | (probe) 22s | (probe) 11s |
 | 02-fix-typo | pass 79s | fail | fail |
 | 03-add-docstring | pass 25s | fail | fail |
 | 04-rename-variable | pass 29s | **pass 81s** | fail |
