@@ -55,6 +55,8 @@ Eval harness invocation: `MODELS="qwen3-coder-32k gpt-oss:20b gpt-oss-64k" ./scr
 
 `qwen3-coder-32k` stays as the default `FORGE_CLAUDE_MODEL` in `src/cc_forge/config.py`. The other two are not viable replacements for this combination of (Claude Code harness, CPU-only host, our task set). The next eval pass (probably issue #54, cloud Ollama services) is where we'd test whether the same models become viable with more compute behind them, or whether something like `qwen3-coder-32k` running on a faster backend gives a meaningful speed-up.
 
+*(Superseded 2026-09-16 — the default is now `qwen3-coder-64k`. See "Default switched to qwen3-coder-64k" at the end of this document. `FORGE_CLAUDE_MODEL` was the env var name at the time; it is now `FORGE_AGENT_MODEL`, with the old name still honoured as a fallback.)*
+
 ## Results — screening matrix 2 (2026-06-18)
 
 Following on the community research in #53, the second screening run broadens beyond the initial Qwen/GPT-OSS family to test whether other open-weight families produce different capability profiles in our harness. The shortlist deliberately spans:
@@ -125,6 +127,8 @@ The first attempt to run matrix 2 incorrectly skipped `devstral:24b` despite its
 
 Nothing. `qwen3-coder-32k` remains the default `FORGE_CLAUDE_MODEL`. The candidates that ran in matrix 2 (Devstral, Granite) failed in a way that suggests an Ollama-side or model-side tool-call format mismatch rather than something a different prompt or harness tweak would unlock. The next eval pass (issue #54, cloud Ollama services) is where we'd test whether the same models become viable with a different inference backend that handles tool calls differently.
 
+*(Superseded 2026-09-16 — the default is now `qwen3-coder-64k`. See "Default switched to qwen3-coder-64k" at the end of this document.)*
+
 ## Results — Post-Ollama-upgrade observations (2026-06-18)
 
 After upgrading the forge host's Ollama from 0.15.4 to 0.30.10 (procedure in [`LOCAL-OLLAMA-SETUP.md`](LOCAL-OLLAMA-SETUP.md#cleaner-alternative-upgrade-by-tarball-extraction)), a `qwen3-coder-32k` smoke-test probe, a re-run of the matrix 2 candidates, and a probe of the never-tested `qwen3-coder-64k` variant produced findings that revise both the cost model and the matrix 2 interpretation.
@@ -193,7 +197,7 @@ Never tested in matrix 1 or 2. Pulled but skipped. Probed against 02-fix-typo + 
 
 ### What this changes about the recommendation
 
-- **`qwen3-coder-32k` stays as the default `FORGE_CLAUDE_MODEL`.** Now with a much better UX — 17-minute task suite instead of 3-hour. The "session looks hung for half an hour" pain is gone.
+- **`qwen3-coder-32k` stays as the default `FORGE_CLAUDE_MODEL`.** Now with a much better UX — 17-minute task suite instead of 3-hour. The "session looks hung for half an hour" pain is gone. *(Superseded 2026-09-16 — see "Default switched to qwen3-coder-64k" below.)*
 - **`qwen3-coder-64k` is now a documented alternative** for anyone wanting more context room. Slightly more VRAM pressure, slightly slower per task, but it works.
 - **Devstral, Granite, Gemma 4 remain unusable for this harness.** The "upgrade fixes everything" gamble didn't pay off for the tool-call failures. Issue #54 (cloud Ollama) is the remaining experiment — if the failure is Ollama's Anthropic API translation rather than the model itself, a different backend (possibly OpenAI-compatible) might handle these models' native tool-call format.
 - **The cost model in this doc and `scripts/eval/README.md` is wrong post-upgrade.** Anyone reading those needs to know the numbers came from the 0.15.4/CPU-only era. Follow-up worth doing: separate "historical CPU-only" from "current GPU-assisted" framings, so we don't strand readers on outdated numbers.
