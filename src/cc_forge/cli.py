@@ -77,7 +77,7 @@ def local(directory: str, agent: str) -> None:
     from cc_forge.session import prepare_local_directory, start_session
 
     adapter = REGISTRY[agent]
-    cfg = load_config()
+    cfg = load_config().without_cloud_credentials()
     repo_path = prepare_local_directory(Path(directory))
     start_session(
         cfg,

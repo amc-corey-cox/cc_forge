@@ -13,6 +13,27 @@ from cc_forge.git import is_git_repo
 from cc_forge.session import prepare_local_directory
 
 
+def _make_config(**kwargs):
+    from cc_forge.config import ForgeConfig
+
+    defaults = dict(
+        forgejo_url="http://localhost:3000",
+        forgejo_token="fj-token",
+        ollama_cpu_url="http://localhost:11434",
+        agent_image="test",
+        agent_model="test-model",
+        agent_api_key="",
+        compose_file="",
+        github_token="",
+        github_repo="",
+        github_owner="",
+        agent_mem_limit="4g",
+        agent_pids_limit=4096,
+    )
+    defaults.update(kwargs)
+    return ForgeConfig(**defaults)
+
+
 @pytest.fixture()
 def source_dir(tmp_path: Path) -> Path:
     """Create a sample directory with loose text files."""
@@ -134,12 +155,63 @@ def test_local_requests_private_forgejo_repo(
     monkeypatch.setattr(
         session_mod, "start_session", lambda config, **kwargs: captured.update(kwargs)
     )
-    monkeypatch.setattr(config_mod, "load_config", lambda: None)
+    monkeypatch.setattr(config_mod, "load_config", _make_config)
 
     local.callback(directory=str(source_dir), agent="aider")
 
     assert captured["private"] is True
     assert captured["passthrough"] is False
+
+
+def test_local_strips_cloud_credentials(
+    source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A GitHub token in the container is an exfiltration path for private files."""
+    import cc_forge.config as config_mod
+    import cc_forge.session as session_mod
+    from cc_forge.cli import local
+    from cc_forge.config import ForgeConfig
+
+    loaded = _make_config(
+        forgejo_token="keep-me",
+        agent_api_key="sk-should-be-dropped",
+        github_token="ghp-should-be-dropped",
+        github_repo="owner/repo",
+        github_owner="owner",
+    )
+    seen: dict[str, ForgeConfig] = {}
+    monkeypatch.setattr(config_mod, "load_config", lambda: loaded)
+    monkeypatch.setattr(
+        session_mod, "start_session", lambda config, **kw: seen.update(config=config)
+    )
+
+    local.callback(directory=str(source_dir), agent="aider")
+
+    cfg = seen["config"]
+    assert cfg.github_token == ""
+    assert cfg.github_repo == ""
+    assert cfg.github_owner == ""
+    assert cfg.agent_api_key == ""
+    assert cfg.forgejo_token == "keep-me", "Forgejo is local and the session needs it"
+
+
+def test_normal_run_keeps_cloud_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only 'local' strips credentials -- ordinary sessions need the gh shim's token."""
+    import cc_forge.config as config_mod
+    import cc_forge.session as session_mod
+    from cc_forge.cli import run
+
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        config_mod, "load_config", lambda: _make_config(github_token="ghp-keep")
+    )
+    monkeypatch.setattr(
+        session_mod, "start_session", lambda config, **kw: seen.update(config=config)
+    )
+
+    run.callback(repo=".", agent="claude", passthrough=False, claude_compat=False)
+
+    assert seen["config"].github_token == "ghp-keep"
 
 
 def test_rerun_clears_stray_dotfiles_from_managed_repo(source_dir: Path) -> None:
