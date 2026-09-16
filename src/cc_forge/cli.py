@@ -54,6 +54,41 @@ def run(repo: str, agent: str, passthrough: bool, claude_compat: bool) -> None:
     start_session(cfg, repo_path=repo, agent=agent, adapter=adapter, passthrough=passthrough)
 
 
+@main.command(name="local")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, resolve_path=True))
+@click.option("--agent", default="aider",
+              type=click.Choice(list(_agent_choices())),
+              help="Agent to use inside the container (default: aider).")
+def local(directory: str, agent: str) -> None:
+    """Start a local-only session on a directory of loose files.
+
+    Copies files into a managed git repo, pushes to local Forgejo, and
+    launches an agent session backed by local Ollama only.  Cloud
+    credentials are never injected.
+
+    Hidden entries (dotfiles and dot-directories) and symlinks are not copied;
+    anything skipped is reported.  This mode is for directories of loose files,
+    not for git repos or system directories.
+    """
+    from pathlib import Path
+
+    from cc_forge.agents import REGISTRY
+    from cc_forge.config import load_config
+    from cc_forge.session import prepare_local_directory, start_session
+
+    adapter = REGISTRY[agent]
+    cfg = load_config().without_cloud_credentials()
+    repo_path = prepare_local_directory(Path(directory))
+    start_session(
+        cfg,
+        repo_path=str(repo_path),
+        agent=agent,
+        adapter=adapter,
+        passthrough=False,
+        private=True,
+    )
+
+
 def _walk(cfg, repo: str, remote: str, kinds: tuple[str, ...]) -> None:
     from cc_forge.promote import walk_promotable
 
