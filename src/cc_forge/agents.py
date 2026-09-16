@@ -250,7 +250,7 @@ class ClaudeAdapter(AgentAdapter):
     """Adapter for Claude Code agent."""
 
     supports_passthrough = True
-    default_model = "qwen3-coder-32k"
+    default_model = "qwen3-coder-64k"
 
     def build_cmd(self, config: ForgeConfig, passthrough: bool) -> list[str]:
         cmd = ["claude", "--dangerously-skip-permissions"]
@@ -283,7 +283,7 @@ class AiderAdapter(AgentAdapter):
     """Adapter for Aider agent."""
 
     supports_passthrough = False
-    default_model = "ollama/qwen3-coder-32k"
+    default_model = "ollama/qwen3-coder-64k"
 
     def build_cmd(self, config: ForgeConfig, passthrough: bool) -> list[str]:
         return ["aider", "--model", self._model(config)]

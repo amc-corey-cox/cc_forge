@@ -25,7 +25,7 @@ def _find_compose_file() -> str:
     return ""
 
 
-AGENT_MODEL_DEFAULT = "qwen3-coder-32k"
+AGENT_MODEL_DEFAULT = "qwen3-coder-64k"
 
 _DEFAULTS = {
     "FORGE_FORGEJO_URL": "http://localhost:3000",

@@ -3,7 +3,7 @@
 How Claude Code performs against local Ollama models, and which ones we recommend. Part of the [Track 1 evaluation](https://github.com/amc-corey-cox/cc_forge/issues) of the agent-architecture exploration.
 
 > **Status:** Screening matrices 1 (2026-06-17), matrix 2 (2026-06-18), and post-Ollama-upgrade observations (2026-06-18) complete. Headline results:
-> - `qwen3-coder-32k` and `qwen3-coder-64k` both meaningfully drive Claude Code (the 64k variant was probed after the upgrade).
+> - `qwen3-coder-64k` is the default (switched 2026-09-16 on context-budget grounds, see the final section); `qwen3-coder-32k` also drives Claude Code and was the previous default.
 > - Forge UX improved dramatically: 0.30.10 + GPU offload made the eval suite ~10x faster (~3 hours → ~17 min). Cost-model section below is now stale for the 0.30.10 era.
 > - The "Ollama upgrade fixes Devstral/Granite" hypothesis was tested and **falsified** — their single-turn narration failure mode is unchanged across versions. See "Post-Ollama-upgrade observations" for the full retest.
 
@@ -230,3 +230,38 @@ Models we exercised as matrix candidates against Claude Code's harness and shown
 | `phi4:14b` | No `tools` capability in Ollama manifest | Matrix 2 pre-flight |
 
 The Devstral / Granite failure mode is `exit_code 0`, `num_turns: 1`, model emits a polite acknowledgment ("I'll help you fix that, let me look at the file…") and then never issues a tool call. Identical pattern pre- and post-upgrade — the Ollama 0.30.10 swap to llama.cpp's chat-template handling didn't change it, falsifying the "stale template was the bottleneck" hypothesis. Whatever's breaking the tool-call path lives in Ollama's Anthropic Messages API translation or in how these models emit tool calls natively — not in the model loader. See the post-upgrade observations section above for details.
+
+## Default switched to qwen3-coder-64k (2026-09-16)
+
+The recommendation above ("32k stays default, 64k is a documented alternative") was made
+without knowing how much of the context window Claude Code's harness consumes before any
+work starts. Measured by pointing `ANTHROPIC_BASE_URL` at a capture server instead of
+Ollama and tokenizing the request with qwen3's own tokenizer via `prompt_eval_count`:
+
+| Component | Tokens | Chars |
+|-----------|-------:|------:|
+| System prompt | 2,677 | 13,043 |
+| 17 tool definitions | 14,086 | 60,722 |
+| Messages (`-p "hi"`) | ~500 | 2,181 |
+| **Floor per request** | **~17,300** | **75,711** |
+
+Measured on Claude Code 2.1.47 in the agent image, with forge's four trim flags already
+set (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`,
+`MAX_THINKING_TOKENS=0`, `CLAUDE_CODE_SKIP_UPDATE`).
+
+Two things follow. First, **the tool schemas are 84% of the overhead** — the system prompt
+everyone assumes is the problem is only 16% of it, and there is no supported way to trim
+the tool set. Second, at `num_ctx 32768` that floor eats **~53% of the window before the
+agent reads a file**, leaving ~15k for the repo map, file contents, conversation, and
+output. At 64k the same floor is ~26%, roughly tripling usable working context.
+
+`qwen3-coder`'s trained context is 262,144; the 32k and 64k figures are `num_ctx` settings
+in our Modelfiles, not model limits. Larger windows are available if VRAM allows.
+
+**Evidence gap worth knowing:** 64k's PASS record is 2 of 6 tasks (`02-fix-typo`,
+`06-implement-from-stub`), against 32k's 5/5. It is slightly slower per task from the
+longer KV prefill. Running the full matrix against 64k would put the new default on the
+same footing as the old one.
+
+For aider the calculus is different and this change matters far less — aider's entire
+request for a small edit was 745 tokens, roughly 4% of Claude Code's floor.
