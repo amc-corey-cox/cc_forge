@@ -84,3 +84,34 @@ def fetch_remote(path: str | Path, remote: str) -> None:
 def create_branch_from_ref(path: str | Path, branch: str, start_ref: str) -> None:
     """Create (or reset) a local branch pointing at start_ref."""
     _run(["branch", "-f", branch, start_ref], cwd=path)
+
+
+def init_repo(path: str | Path) -> None:
+    """Initialize a new git repo at *path* (must already exist)."""
+    _run(["init"], cwd=path)
+    # Managed repos are forge-owned, so give them a local identity rather than
+    # relying on the host having a global one configured.
+    _run(["config", "user.name", "Forge"], cwd=path)
+    _run(["config", "user.email", "forge@forge.local"], cwd=path)
+
+
+def add_all(path: str | Path) -> None:
+    """Stage all changes in the working tree, including deletions."""
+    _run(["add", "-A"], cwd=path)
+
+
+def commit(path: str | Path, message: str) -> None:
+    """Create a commit with the given message.  No-op if the index is clean."""
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=path,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return  # Nothing staged
+    if result.returncode > 1:
+        # 1 means "there are staged changes"; anything higher is a real error.
+        raise GitError(
+            f"git diff --cached failed: {result.stderr.decode(errors='replace').strip()}"
+        )
+    _run(["commit", "-m", message], cwd=path)
