@@ -346,6 +346,9 @@ The result: **tool calls do fire, and the models still fail.**
 - **Granite** quotes the file's actual contents back, so a `read` call genuinely
   executed — then stops and asks: *"If you'd like me to: Correct the typo… please
   let me know!"*
+Devstral's single pass did **not** reproduce on a re-run of `04-rename-variable`
+(fail, 43s), so treat 1/6 as noise around zero rather than partial capability.
+
 - **Devstral** shows `read` and `bash` activity, narrates a three-step plan
   (*"1. Read the contents 2. Identify and correct 3. Write the corrected content
   back"*), and never carries it out. The target file is unchanged.
