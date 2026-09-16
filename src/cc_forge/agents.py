@@ -289,7 +289,12 @@ class AiderAdapter(AgentAdapter):
         return ["aider", "--model", self._model(config)]
 
     def container_env(self, config: ForgeConfig, passthrough: bool) -> dict[str, str]:
-        return _ollama_environment(config)
+        env = _ollama_environment(config)
+        # aider reaches Ollama through litellm, which reads OLLAMA_API_BASE and
+        # ignores OLLAMA_HOST. Without this it falls back to localhost inside the
+        # container and every request is refused.
+        env["OLLAMA_API_BASE"] = env["OLLAMA_HOST"]
+        return env
 
 
 REGISTRY: dict[str, AgentAdapter] = {

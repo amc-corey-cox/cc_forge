@@ -105,3 +105,11 @@ class TestAiderAdapter:
         assert env["ANTHROPIC_AUTH_TOKEN"] == "ollama"
         assert "host.docker.internal" in env["ANTHROPIC_BASE_URL"]
         assert env["CLAUDE_CODE_SKIP_UPDATE"] == "1"
+
+    def test_container_env_sets_ollama_api_base(self):
+        """litellm (aider's backend) reads OLLAMA_API_BASE and ignores
+        OLLAMA_HOST; without it aider falls back to localhost in the container."""
+        config = _make_config()
+        env = self.adapter.container_env(config, passthrough=False)
+        assert env["OLLAMA_API_BASE"] == env["OLLAMA_HOST"]
+        assert "host.docker.internal" in env["OLLAMA_API_BASE"]

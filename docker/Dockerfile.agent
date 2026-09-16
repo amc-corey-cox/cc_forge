@@ -63,6 +63,8 @@ ENV FORGE_AGENT="claude"
 
 # Ollama connection (via forge-network proxies)
 ENV OLLAMA_HOST="http://forge-ollama-proxy:11434"
+# aider/litellm reads OLLAMA_API_BASE, not OLLAMA_HOST
+ENV OLLAMA_API_BASE="http://forge-ollama-proxy:11434"
 ENV ANTHROPIC_AUTH_TOKEN="ollama"
 ENV ANTHROPIC_BASE_URL="http://forge-ollama-proxy:11434"
 

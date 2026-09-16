@@ -6,7 +6,7 @@ Settings are resolved in order: env vars > .env file > ~/.config/forge/config.en
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 def _find_compose_file() -> str:
@@ -128,6 +128,24 @@ class ForgeConfig:
     github_owner: str = field(default_factory=lambda: _resolve("FORGE_GITHUB_OWNER"))
     agent_mem_limit: str = field(default_factory=lambda: _resolve("FORGE_AGENT_MEM_LIMIT"))
     agent_pids_limit: int = field(default_factory=lambda: _resolve_int("FORGE_AGENT_PIDS_LIMIT"))
+
+    def without_cloud_credentials(self) -> ForgeConfig:
+        """A copy with every credential that could reach a third party removed.
+
+        Used by ``forge local``, whose contract is that the files never leave
+        the machine.  A GitHub token inside the container is an exfiltration
+        path regardless of what the gh shim permits -- the shim is a
+        convenience, not a boundary, and the agent can reach the network
+        directly.  Forgejo's token is kept: it is local and the session
+        needs it.
+        """
+        return replace(
+            self,
+            github_token="",
+            github_repo="",
+            github_owner="",
+            agent_api_key="",
+        )
 
     def resolve_github_repo(self, repo_name: str) -> str:
         """Resolve the GitHub 'owner/repo' destination, mirroring the gh-shim chain.
