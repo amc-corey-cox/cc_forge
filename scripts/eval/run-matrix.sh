@@ -23,8 +23,12 @@ OLLAMA_URL="${OLLAMA_URL:-http://forge-ollama-proxy:11434}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 OUTPUT_BASE="eval-results/$RUN_ID"
 AGENT_IMAGE="${AGENT_IMAGE:-cc-forge-agent:latest}"
+AGENT="${AGENT:-claude}"
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+
+# shellcheck source=scripts/eval/lib.sh
+. "$SCRIPT_DIR/lib.sh"
 
 [ -d "$TASKS_DIR" ] || { echo "TASKS_DIR not found: $TASKS_DIR" >&2; exit 1; }
 
@@ -53,16 +57,20 @@ warmup() {
     echo "  warming $model (cap: ${WARMUP_TIMEOUT_S}s)..."
     local start end
     start=$(date +%s)
-    local cmd
-    cmd=$(printf 'claude -p %q --no-session-persistence --output-format json --model %q --dangerously-skip-permissions' \
-        "$WARMUP_PROMPT" "$model")
+    local cmd bootstrap inner
+    cmd=$(agent_cmd "$AGENT" "$WARMUP_PROMPT" "$model")
+    bootstrap=$(agent_bootstrap "$AGENT" "$OLLAMA_URL" "$model")
+    # Warm through the same harness the tasks will use, so the KV cache holds
+    # that harness's system prompt rather than a different one.
+    inner="$bootstrap
+$cmd"
     timeout "$WARMUP_TIMEOUT_S" docker run --rm \
         --network forge-network \
         -e ANTHROPIC_BASE_URL="$OLLAMA_URL" \
         -e ANTHROPIC_AUTH_TOKEN=ollama \
         --entrypoint /bin/bash \
         "$AGENT_IMAGE" \
-        -c "$cmd" \
+        -c "$inner" \
         > "$warmup_out/output.json" 2> "$warmup_out/stderr.log" \
         && WU_EXIT=0 || WU_EXIT=$?
     end=$(date +%s)
@@ -73,7 +81,7 @@ warmup() {
     fi
 }
 
-export OUTPUT_BASE OLLAMA_URL AGENT_IMAGE
+export OUTPUT_BASE OLLAMA_URL AGENT_IMAGE AGENT
 
 for model in $MODELS; do
     echo

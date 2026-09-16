@@ -50,8 +50,13 @@ RUN userdel -r ubuntu 2>/dev/null; \
 
 # Install tools for the agent user
 USER agent
-ENV PATH="/home/agent/.local/bin:$PATH"
+ENV PATH="/home/agent/.opencode/bin:/home/agent/.local/bin:$PATH"
 RUN pipx install aider-chat
+
+# OpenCode: prebuilt binary rather than npm, which wants a newer Node than the
+# base image ships.
+RUN curl -fsSL https://opencode.ai/install | bash && \
+    /home/agent/.opencode/bin/opencode --version
 
 # Forgejo connection — token injected via .git-credentials, not env vars.
 # FORGEJO_URL and FORGEJO_TOKEN kept as empty defaults for manual docker run only.
