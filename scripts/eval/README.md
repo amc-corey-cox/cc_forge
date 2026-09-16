@@ -1,17 +1,32 @@
 # Eval Harness
 
-Scripts for running the Track 1 evaluation matrix (Claude Code harness with local Ollama models). Output goes to `eval-results/<run-id>/` for later analysis.
+Scripts for running the Track 1 evaluation matrix (an agent harness against local Ollama models). Output goes to `eval-results/<run-id>/` for later analysis.
 
 ## Running
 
 ```bash
-# From a forge host (tesseract):
-MODELS="qwen3-coder-32k gpt-oss:20b" \
+# From a forge host:
+MODELS="qwen3-coder-64k gpt-oss:20b" \
 OLLAMA_URL="http://forge-ollama-proxy:11434" \
 ./scripts/eval/run-matrix.sh
 ```
 
 Required: agent image present (`cc-forge-agent:latest`), `forge-network` exists, Ollama reachable at the URL, all the named models pulled.
+
+### Choosing a harness
+
+`AGENT` selects which harness runs the tasks (default `claude`):
+
+```bash
+AGENT=opencode MODELS="qwen3-coder-64k" ./scripts/eval/run-matrix.sh
+```
+
+Scoring is harness-agnostic — `score.sh` inspects the workspace, not the agent's
+output — so results are directly comparable across harnesses. The harness used is
+recorded as `agent` in each `meta.json`.
+
+The warmup runs through the selected harness too: warming via a different one
+would cache the wrong system prompt and skew the task timings.
 
 To run a single task without the warmup orchestration (useful for debugging):
 

@@ -1,20 +1,21 @@
 """Agent adapter interface and registry for CC Forge.
 
 Each adapter encapsulates the command, environment, and state management
-for a specific agent harness (Claude Code, Aider, etc.). Adding a new
+for a specific agent harness (Claude Code, Aider, OpenCode). Adding a new
 harness is a new adapter class plus a REGISTRY entry.
 """
 
 from __future__ import annotations
 
 import io
+import json
 import tarfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 import click
 
-from cc_forge.config import ForgeConfig
+from cc_forge.config import AGENT_MODEL_DEFAULT, ForgeConfig
 from cc_forge.docker import (
     _add_tar_dir,
     _add_tar_file,
@@ -31,7 +32,6 @@ class AgentAdapter(ABC):
 
     def _model(self, config: ForgeConfig) -> str:
         """Return the model to use: config value if explicitly set, else adapter default."""
-        from cc_forge.config import AGENT_MODEL_DEFAULT
         if config.agent_model != AGENT_MODEL_DEFAULT or not self.default_model:
             return config.agent_model
         return self.default_model
@@ -242,6 +242,49 @@ def _save_claude_credentials(container_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# OpenCode adapter helpers
+# ---------------------------------------------------------------------------
+
+
+def _opencode_config(config: ForgeConfig, qualified_model: str) -> bytes:
+    """Build opencode.json: Ollama provider plus pre-approved permissions.
+
+    OpenCode reads provider settings from this file rather than from env vars,
+    so it has to be injected before the session starts.
+    """
+    ollama_url = _rewrite_url(config.ollama_cpu_url, "host.docker.internal")
+    model = qualified_model.split("/", 1)[1]
+    doc = {
+        "permission": {"bash": "allow", "edit": "allow", "webfetch": "allow"},
+        "provider": {
+            "ollama": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Ollama",
+                # OpenCode speaks the OpenAI-compatible API, not Anthropic's.
+                "options": {"baseURL": f"{ollama_url}/v1"},
+                "models": {model: {"name": model}},
+            }
+        },
+    }
+    return json.dumps(doc, indent=2).encode()
+
+
+def _copy_opencode_config(container, config: ForgeConfig, qualified_model: str) -> None:
+    """Inject opencode.json into the container before the agent starts."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        _add_tar_dir(tar, ".config/")
+        _add_tar_dir(tar, ".config/opencode/")
+        _add_tar_file(
+            tar,
+            ".config/opencode/opencode.json",
+            _opencode_config(config, qualified_model),
+        )
+    buf.seek(0)
+    container.put_archive("/home/agent", buf)
+
+
+# ---------------------------------------------------------------------------
 # Adapters
 # ---------------------------------------------------------------------------
 
@@ -297,7 +340,33 @@ class AiderAdapter(AgentAdapter):
         return env
 
 
+class OpenCodeAdapter(AgentAdapter):
+    """Adapter for the OpenCode agent."""
+
+    supports_passthrough = False
+    default_model = AGENT_MODEL_DEFAULT
+
+    def _qualified_model(self, config: ForgeConfig) -> str:
+        """Model as ``provider/model``, which is the form OpenCode expects."""
+        model = self._model(config)
+        # Tolerate an already-qualified name so a value copied from the aider
+        # convention doesn't become 'ollama/ollama/...'.
+        return model if "/" in model else f"ollama/{model}"
+
+    def build_cmd(self, config: ForgeConfig, passthrough: bool) -> list[str]:
+        # --auto approves permissions not explicitly denied, matching the
+        # unattended posture the other adapters run with in the container.
+        return ["opencode", "-m", self._qualified_model(config), "--auto"]
+
+    def container_env(self, config: ForgeConfig, passthrough: bool) -> dict[str, str]:
+        return _ollama_environment(config)
+
+    def inject_state(self, container, config: ForgeConfig, passthrough: bool) -> None:
+        _copy_opencode_config(container, config, self._qualified_model(config))
+
+
 REGISTRY: dict[str, AgentAdapter] = {
     "claude": ClaudeAdapter(),
     "aider": AiderAdapter(),
+    "opencode": OpenCodeAdapter(),
 }
