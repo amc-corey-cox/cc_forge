@@ -258,10 +258,32 @@ output. At 64k the same floor is ~26%, roughly tripling usable working context.
 `qwen3-coder`'s trained context is 262,144; the 32k and 64k figures are `num_ctx` settings
 in our Modelfiles, not model limits. Larger windows are available if VRAM allows.
 
-**Evidence gap worth knowing:** 64k's PASS record is 2 of 6 tasks (`02-fix-typo`,
-`06-implement-from-stub`), against 32k's 5/5. It is slightly slower per task from the
-longer KV prefill. Running the full matrix against 64k would put the new default on the
-same footing as the old one.
+### Full matrix run (run id `20260916T141054Z`)
+
+The earlier 64k evidence was 2 of 6 tasks. The full matrix has now been run, so the new
+default rests on the same footing as the old one — better, since the task set has grown
+by one since matrix 1.
+
+| Task | Result | Duration | Turns |
+|------|--------|---------:|------:|
+| 01-sanity-pong | (probe) | 3s | 1 |
+| 02-fix-typo | pass | 263s | 3 |
+| 03-add-docstring | pass | 269s | 4 |
+| 04-rename-variable | pass | 305s | 5 |
+| 05-fix-failing-test | pass | 312s | 6 |
+| 06-implement-from-stub | pass | 335s | 6 |
+| 07-fix-bug-from-traceback | pass | 348s | 8 |
+
+**6/6 scored tasks pass**, all `exit_code 0`, `is_error false`. Warmup 247s. Turn counts of
+3–8 confirm real multi-turn tool-calling loops rather than the single-turn narration that
+sank Devstral and Granite; the sanity probe is correctly 1 turn.
+
+`07-fix-bug-from-traceback` did not exist for matrices 1 and 2, so the like-for-like
+comparison against 32k's 5/5 is tasks 02–06, which 64k also passes 5/5.
+
+**The cost is speed.** Tasks 01–06 took ~25 min against the ~17 min documented for 32k on
+the same hardware — roughly 45% slower, from the longer KV prefill at 64k context. That is
+the trade: a slower suite in exchange for roughly triple the usable working context.
 
 For aider the calculus is different and this change matters far less — aider's entire
 request for a small edit was 745 tokens, roughly 4% of Claude Code's floor.
