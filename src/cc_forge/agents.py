@@ -347,11 +347,23 @@ class OpenCodeAdapter(AgentAdapter):
     default_model = AGENT_MODEL_DEFAULT
 
     def _qualified_model(self, config: ForgeConfig) -> str:
-        """Model as ``provider/model``, which is the form OpenCode expects."""
+        """Model as ``provider/model``, which is the form OpenCode expects.
+
+        Tolerates an already-qualified name so a value copied from the aider
+        convention doesn't become ``ollama/ollama/...``.  Rejects other
+        providers: :meth:`inject_state` only configures ollama, so those would
+        launch against a provider the config never defines.
+        """
         model = self._model(config)
-        # Tolerate an already-qualified name so a value copied from the aider
-        # convention doesn't become 'ollama/ollama/...'.
-        return model if "/" in model else f"ollama/{model}"
+        if "/" not in model:
+            return f"ollama/{model}"
+        provider = model.split("/", 1)[0]
+        if provider != "ollama":
+            raise click.ClickException(
+                f"The opencode agent supports only the 'ollama' provider, "
+                f"got '{model}'. Set the model to a bare name or 'ollama/<model>'."
+            )
+        return model
 
     def build_cmd(self, config: ForgeConfig, passthrough: bool) -> list[str]:
         # --auto approves permissions not explicitly denied, matching the

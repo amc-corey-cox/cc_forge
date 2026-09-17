@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import json
 
+import click
+import pytest
+
 from cc_forge.agents import (
     REGISTRY,
     AgentAdapter,
@@ -143,6 +146,14 @@ class TestOpenCodeAdapter:
         config = _make_config(agent_model="ollama/deepseek-coder")
         cmd = self.adapter.build_cmd(config, passthrough=False)
         assert cmd == ["opencode", "-m", "ollama/deepseek-coder", "--auto"]
+
+    def test_build_cmd_rejects_other_providers(self):
+        """inject_state only configures ollama, so another provider would launch
+        against one the config never defines."""
+        config = _make_config(agent_model="openai/gpt-4")
+        with pytest.raises(click.ClickException) as exc:
+            self.adapter.build_cmd(config, passthrough=False)
+        assert "ollama" in str(exc.value)
 
     def test_config_points_at_ollama_openai_endpoint(self):
         """OpenCode speaks the OpenAI-compatible API, not Anthropic's."""
