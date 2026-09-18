@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import tarfile
+import tempfile
 from pathlib import Path
 
 import click
@@ -22,7 +24,9 @@ from cc_forge.git import (
     GitError,
     add_all,
     add_remote,
+    archive_ref,
     commit,
+    fetch_remote,
     get_current_branch,
     get_remote_url,
     get_repo_name,
@@ -36,6 +40,16 @@ from cc_forge.git import (
 
 
 _LOCAL_REPOS_DIR = Path.home() / ".config" / "forge" / "local-repos"
+
+
+def _managed_repo_path(source: Path) -> Path:
+    """Where the managed repo for *source* lives.
+
+    Deterministic name from the full path so two directories with the same
+    basename (e.g. ``~/work/docs`` and ``~/personal/docs``) don't collide.
+    """
+    path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]
+    return _LOCAL_REPOS_DIR / f"{source.name}-{path_hash}"
 
 
 def _display_path(path: Path) -> str:
@@ -100,10 +114,7 @@ def prepare_local_directory(source: Path) -> Path:
     if not source.is_dir():
         raise click.ClickException(f"Not a directory: {_display_path(source)}")
 
-    # Deterministic name from full path so two dirs with the same basename
-    # (e.g. ~/work/docs and ~/personal/docs) don't collide.
-    path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]
-    repo_dir = _LOCAL_REPOS_DIR / f"{source.name}-{path_hash}"
+    repo_dir = _managed_repo_path(source)
     repo_dir.mkdir(parents=True, exist_ok=True)
 
     if not is_git_repo(repo_dir):
@@ -150,6 +161,85 @@ def prepare_local_directory(source: Path) -> Path:
     commit(repo_dir, "Update from local directory")
 
     return repo_dir
+
+
+def pull_local_directory(
+    source: Path, target: Path, branch: str | None = None
+) -> Path:
+    """Extract a ``forge local`` session's results into *target*.
+
+    *target* must be empty or not exist: the agent's output is written fresh
+    rather than merged over the source, so nothing of the user's can be
+    clobbered and the merge stays their decision.  Returns *target*.
+    """
+    repo_dir = _managed_repo_path(source)
+    if not is_git_repo(repo_dir):
+        raise click.ClickException(
+            f"No forge local session found for {_display_path(source)}.\n"
+            f"Expected a managed repo at {_display_path(repo_dir)}."
+        )
+
+    if target.exists():
+        if not target.is_dir():
+            raise click.ClickException(f"Not a directory: {_display_path(target)}")
+        if any(target.iterdir()):
+            raise click.ClickException(
+                f"{_display_path(target)} is not empty.\n"
+                "Pull into a new or empty directory, then merge the results "
+                "yourself -- forge won't write over existing files."
+            )
+    else:
+        target.mkdir(parents=True)
+
+    branch = branch or get_current_branch(repo_dir)
+    click.echo(f"Fetching {branch} from Forgejo...")
+    try:
+        fetch_remote(repo_dir, "forgejo")
+    except GitError as e:
+        raise click.ClickException(f"Could not fetch from Forgejo: {e}")
+
+    ref = f"forgejo/{branch}"
+    try:
+        _extract_ref(repo_dir, ref, target)
+    except GitError as e:
+        raise click.ClickException(
+            f"Could not read {ref}: {e}\n"
+            "Use --branch if the agent worked on a different branch."
+        )
+
+    pulled = sorted(
+        p.relative_to(target).as_posix()
+        for p in target.rglob("*")
+        if p.is_file()
+    )
+    click.echo(f"Pulled {len(pulled)} file(s) into {_display_path(target)}")
+
+    # Report what the agent removed. We never delete from the source -- the
+    # user's copy is the only one that matters -- but they should know.
+    in_source = {
+        p.relative_to(source).as_posix()
+        for p in source.rglob("*")
+        if p.is_file() and not _excluded(p)
+    }
+    removed = sorted(in_source - set(pulled))
+    if removed:
+        click.echo(
+            f"Note: {len(removed)} file(s) present in the source are absent from "
+            f"the session's output: {_format_skipped(removed)}",
+            err=True,
+        )
+        click.echo("  Your copies are untouched.", err=True)
+
+    return target
+
+
+def _extract_ref(repo_dir: Path, ref: str, target: Path) -> None:
+    """Write the tree at *ref* into *target* without disturbing the repo."""
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / "tree.tar"
+        archive_ref(repo_dir, ref, archive)
+        with tarfile.open(archive) as tar:
+            tar.extractall(target, filter="data")
 
 
 def start_session(

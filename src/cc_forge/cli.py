@@ -59,7 +59,13 @@ def run(repo: str, agent: str, passthrough: bool, claude_compat: bool) -> None:
 @click.option("--agent", default="aider",
               type=click.Choice(list(_agent_choices())),
               help="Agent to use inside the container (default: aider).")
-def local(directory: str, agent: str) -> None:
+@click.option("--pull", "pull_into", default=None,
+              type=click.Path(file_okay=False, resolve_path=True),
+              help="Pull this session's results into an empty directory "
+                   "instead of starting a session.")
+@click.option("--branch", default=None,
+              help="Branch to pull (default: the branch forge local pushed).")
+def local(directory: str, agent: str, pull_into: str | None, branch: str | None) -> None:
     """Start a local-only session on a directory of loose files.
 
     Copies files into a managed git repo, pushes to local Forgejo, and
@@ -69,12 +75,27 @@ def local(directory: str, agent: str) -> None:
     Hidden entries (dotfiles and dot-directories) and symlinks are not copied;
     anything skipped is reported.  This mode is for directories of loose files,
     not for git repos or system directories.
+
+    With --pull, no session starts: the results of a previous session on
+    DIRECTORY are written into the given empty directory, leaving your
+    originals untouched so the merge stays your decision.
     """
     from pathlib import Path
 
     from cc_forge.agents import REGISTRY
     from cc_forge.config import load_config
-    from cc_forge.session import prepare_local_directory, start_session
+    from cc_forge.session import (
+        prepare_local_directory,
+        pull_local_directory,
+        start_session,
+    )
+
+    if pull_into:
+        pull_local_directory(Path(directory), Path(pull_into), branch)
+        return
+
+    if branch:
+        raise click.UsageError("--branch only applies with --pull")
 
     adapter = REGISTRY[agent]
     cfg = load_config().without_cloud_credentials()
