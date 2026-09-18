@@ -10,7 +10,7 @@ import click
 import pytest
 
 from cc_forge.git import is_git_repo
-from cc_forge.session import prepare_local_directory
+from cc_forge.session import prepare_local_directory, pull_local_directory
 
 
 def _make_config(**kwargs):
@@ -157,7 +157,7 @@ def test_local_requests_private_forgejo_repo(
     )
     monkeypatch.setattr(config_mod, "load_config", _make_config)
 
-    local.callback(directory=str(source_dir), agent="aider")
+    local.callback(directory=str(source_dir), agent="aider", pull_into=None, branch=None)
 
     assert captured["private"] is True
     assert captured["passthrough"] is False
@@ -185,7 +185,7 @@ def test_local_strips_cloud_credentials(
         session_mod, "start_session", lambda config, **kw: seen.update(config=config)
     )
 
-    local.callback(directory=str(source_dir), agent="aider")
+    local.callback(directory=str(source_dir), agent="aider", pull_into=None, branch=None)
 
     cfg = seen["config"]
     assert cfg.github_token == ""
@@ -297,3 +297,92 @@ def test_prepare_rejects_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     assert str(fake_home) not in str(exc.value)
     assert "~/not-a-dir.txt" in str(exc.value)
+
+
+def _fake_forgejo_session(source: Path, tmp_path: Path, edits) -> Path:
+    """Run a prepare, push to a local bare 'forgejo', apply *edits* there.
+
+    Stands in for an agent session: the bare repo is what forge would pull from.
+    """
+    repo = prepare_local_directory(source)
+    bare = tmp_path / "forgejo.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
+    subprocess.run(["git", "remote", "add", "forgejo", str(bare)], cwd=repo, check=True)
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"], cwd=repo,
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "push", "-q", "forgejo", branch], cwd=repo, check=True)
+
+    # "Agent" work: clone, mutate, push back
+    work = tmp_path / "agent-work"
+    subprocess.run(["git", "clone", "-q", str(bare), str(work)], check=True)
+    subprocess.run(["git", "config", "user.email", "a@a"], cwd=work, check=True)
+    subprocess.run(["git", "config", "user.name", "agent"], cwd=work, check=True)
+    edits(work)
+    subprocess.run(["git", "add", "-A"], cwd=work, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "agent work", "--allow-empty"], cwd=work, check=True
+    )
+    subprocess.run(["git", "push", "-q", "origin", branch], cwd=work, check=True)
+    return repo
+
+
+def test_pull_writes_agent_output_into_empty_target(
+    source_dir: Path, tmp_path: Path
+) -> None:
+    def edits(work: Path) -> None:
+        (work / "notes.txt").write_text("rewritten by the agent")
+        (work / "new-chapter.txt").write_text("brand new")
+
+    _fake_forgejo_session(source_dir, tmp_path, edits)
+    target = tmp_path / "pulled"
+
+    pull_local_directory(source_dir, target)
+
+    assert (target / "notes.txt").read_text() == "rewritten by the agent"
+    assert (target / "new-chapter.txt").read_text() == "brand new"
+    assert (target / "subdir" / "deep.txt").exists()
+    # The source is never written to
+    assert (source_dir / "notes.txt").read_text() == "some notes"
+    assert not (source_dir / "new-chapter.txt").exists()
+
+
+def test_pull_refuses_non_empty_target(source_dir: Path, tmp_path: Path) -> None:
+    """The whole point: never write over the user's existing files."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "precious.txt").write_text("do not clobber")
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, target)
+
+    assert "not empty" in str(exc.value)
+    assert (target / "precious.txt").read_text() == "do not clobber"
+
+
+def test_pull_reports_removals_without_deleting(
+    source_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Agent deletions are reported; the user's copy is never removed."""
+    _fake_forgejo_session(
+        source_dir, tmp_path, lambda w: (w / "notes.txt").unlink()
+    )
+    target = tmp_path / "pulled"
+
+    pull_local_directory(source_dir, target)
+
+    err = capsys.readouterr().err
+    assert "notes.txt" in err
+    assert "untouched" in err
+    assert (source_dir / "notes.txt").exists(), "source file must survive"
+    assert not (target / "notes.txt").exists()
+
+
+def test_pull_without_a_session_is_an_error(tmp_path: Path) -> None:
+    never_used = tmp_path / "never-used"
+    never_used.mkdir()
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(never_used, tmp_path / "out")
+    assert "No forge local session" in str(exc.value)

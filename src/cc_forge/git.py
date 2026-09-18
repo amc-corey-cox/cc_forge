@@ -29,6 +29,9 @@ def is_git_repo(path: str | Path = ".") -> bool:
         return True
     except GitError:
         return False
+    except OSError:
+        # cwd doesn't exist -- not a repo, rather than a crash
+        return False
 
 
 def get_repo_root(path: str | Path = ".") -> Path:
@@ -115,3 +118,8 @@ def commit(path: str | Path, message: str) -> None:
             f"git diff --cached failed: {result.stderr.decode(errors='replace').strip()}"
         )
     _run(["commit", "-m", message], cwd=path)
+
+
+def archive_ref(path: str | Path, ref: str, out_file: str | Path) -> None:
+    """Write the tree at *ref* to *out_file* as a tar, leaving the repo untouched."""
+    _run(["archive", "--format=tar", "-o", str(out_file), ref], cwd=path)
