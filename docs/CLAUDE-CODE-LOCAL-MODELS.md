@@ -3,7 +3,8 @@
 How Claude Code performs against local Ollama models, and which ones we recommend. Part of the [Track 1 evaluation](https://github.com/amc-corey-cox/cc_forge/issues) of the agent-architecture exploration.
 
 > **Status:** Screening matrices 1 (2026-06-17), matrix 2 (2026-06-18), and post-Ollama-upgrade observations (2026-06-18) complete. Headline results:
-> - `qwen3-coder-64k` is the default (switched 2026-09-16 on context-budget grounds, see the final section); `qwen3-coder-32k` also drives Claude Code and was the previous default.
+> - `qwen3-coder-64k` is the default (switched 2026-09-16 on context-budget grounds); `qwen3-coder-32k` also drives Claude Code and was the previous default.
+> - **OpenCode** is a supported second harness with a ~2.35x smaller per-request footprint; `qwen3-coder-64k` scores 6/6 under it. See "OpenCode as a second harness".
 > - Forge UX improved dramatically: 0.30.10 + GPU offload made the eval suite ~10x faster (~3 hours → ~17 min). Cost-model section below is now stale for the 0.30.10 era.
 > - The "Ollama upgrade fixes Devstral/Granite" hypothesis was tested and **falsified** — their single-turn narration failure mode is unchanged across versions. See "Post-Ollama-upgrade observations" for the full retest.
 
@@ -115,7 +116,7 @@ qwen3-coder-32k's column carries over verbatim from matrix 1 — we did not re-r
 ### Interpretation
 
 - **qwen3-coder-32k — recommended (unchanged).** Same 5/5 result as matrix 1. Still the only model on either shortlist that meaningfully drives Claude Code in this harness.
-- **devstral:24b — fails despite declared `tools` capability.** Every failed task ended after exactly one model turn with `exit_code 0`. The model acknowledges the request ("I'll help you fix the typo in `README.md`. Let me look at the file."), but then never emits an actual tool call — it just stops, sometimes outputting fake skill tags (`<skill skill="Glob"></skill>`) as text, sometimes admitting "I don't have access to the files or tools." The Ollama manifest says `tools` is supported; Devstral's behavior in this harness says otherwise. Possibly a tokenizer or chat-template mismatch between Devstral's tool-calling format and what Claude Code's harness expects from Ollama — but not something we can fix from the harness side.
+- **devstral:24b — fails despite declared `tools` capability.** Every failed task ended after exactly one model turn with `exit_code 0`. The model acknowledges the request ("I'll help you fix the typo in `README.md`. Let me look at the file."), but then never emits an actual tool call — it just stops, sometimes outputting fake skill tags (`<skill skill="Glob"></skill>`) as text, sometimes admitting "I don't have access to the files or tools." The Ollama manifest says `tools` is supported; Devstral's behavior in this harness says otherwise. Possibly a tokenizer or chat-template mismatch between Devstral's tool-calling format and what Claude Code's harness expects from Ollama — but not something we can fix from the harness side. *(Partly answered 2026-09-16: under OpenCode's OpenAI-compatible path Devstral does emit working tool calls, so the format mismatch was real — but it still fails the tasks. See "OpenCode as a second harness".)*
 - **granite4.1:8b — same shape as devstral, smaller and faster.** 0/5, same single-turn narration pattern. The 8B size means each failed task only burned ~4 min — cheap failure, but a failure all the same. Granite did not crash; Claude Code exited cleanly each time with the model just refusing to act.
 - **The pre-flight filter held its weight.** Three of six candidates (OLMo 3.1, Gemma 3, Phi-4) were skipped without burning any runtime — they don't declare `tools` in their Ollama manifests. That saved an estimated 6-12 hours of wall-clock that would have ended in `HTTP 400 does not support tools` from Ollama.
 
@@ -226,8 +227,8 @@ Models we exercised as matrix candidates against Claude Code's harness and shown
 |-------|--------------|--------|
 | `gpt-oss:20b` | Runs but fails every capability check (0/5) | Matrix 1 |
 | `gpt-oss-64k` | 5/6 hit Claude Code's HTTP timeout with zero output | Matrix 1 |
-| `devstral:24b` | `tools` declared but never emits real tool calls (0/5) | Matrix 2; retested under Ollama 0.30.10, same shape |
-| `granite4.1:8b` | Same single-turn narration pattern as Devstral (0/5) | Matrix 2; retested under Ollama 0.30.10, same shape |
+| `devstral:24b` | Narrates a plan instead of completing it (0/5 Claude Code, 1/6 OpenCode) | Matrix 2; retested under Ollama 0.30.10 and under OpenCode |
+| `granite4.1:8b` | Reads files then asks permission instead of acting (0/5 Claude Code, 0/6 OpenCode) | Matrix 2; retested under Ollama 0.30.10 and under OpenCode |
 | `gemma4:12b` | Output token explosion: every task hits Claude Code's 32K output cap (0/5) | Post-upgrade retest (0.30.10) |
 | `olmo-3.1:32b` | No `tools` capability in Ollama manifest | Matrix 2 pre-flight |
 | `gemma3:12b` | No `tools` capability in Ollama manifest | Matrix 2 pre-flight |
@@ -291,3 +292,79 @@ the trade: a slower suite in exchange for roughly triple the usable working cont
 
 For aider the calculus is different and this change matters far less — aider's entire
 request for a small edit was 745 tokens, roughly 4% of Claude Code's floor.
+
+## OpenCode as a second harness (2026-09-16)
+
+Everything above measures **Claude Code** against local models. This section adds a
+second harness and, in doing so, answers the tool-call question matrix 2 left open.
+
+### Why look: the footprint gap
+
+Measured by pointing each harness's provider base URL at a capture server (no
+inference) and tokenizing the captured request with qwen3's own tokenizer via
+`prompt_eval_count`:
+
+| | Claude Code 2.1.47 | OpenCode 1.18.31 |
+|---|---:|---:|
+| System prompt | 2,677 | 2,035 |
+| Tool definitions | 14,086 (17 tools) | 5,098 (10 tools) |
+| **Per-request floor** | **16,763** | **7,133** |
+
+The difference is almost entirely tool schemas, and Claude Code offers no supported
+way to trim its set. At `num_ctx 65536` that floor is 26% of the window for Claude
+Code versus 11% for OpenCode.
+
+### Results — OpenCode matrix (run `20260916T204313Z`)
+
+All 7 tasks, same hardware, `AGENT=opencode`. `01-sanity-pong` is an
+unscored reachability probe, so pass rates are out of the 6 scored tasks.
+
+| Task | qwen3-coder-64k | devstral:24b | granite4.1:8b |
+|------|-----------------|--------------|---------------|
+| 01-sanity-pong | (probe) 10s | (probe) 22s | (probe) 11s |
+| 02-fix-typo | pass 79s | fail | fail |
+| 03-add-docstring | pass 25s | fail | fail |
+| 04-rename-variable | pass 29s | **pass 81s** | fail |
+| 05-fix-failing-test | pass 42s | fail | fail |
+| 06-implement-from-stub | pass 40s | fail | fail |
+| 07-fix-bug-from-traceback | pass 57s | fail | fail |
+| **Pass rate** | **6/6** | **1/6** | **0/6** |
+
+`qwen3-coder-64k` completed the suite in ~4.7 min against ~31 min under Claude Code
+on the same hardware — roughly 6.6×. That is the footprint gap compounding across
+every turn, not a one-off prefill saving.
+
+### Headline — the matrix 2 hypothesis is resolved, and both readings were wrong
+
+Matrix 2 offered two explanations for Devstral and Granite scoring 0/5: either
+Ollama's Anthropic Messages translation fails to extract their tool calls, or the
+models don't emit tool calls at all. It named #54 (cloud Ollama) as the test.
+
+OpenCode is that test, locally — it uses Ollama's **OpenAI-compatible** endpoint.
+The result: **tool calls do fire, and the models still fail.**
+
+- **Granite** quotes the file's actual contents back, so a `read` call genuinely
+  executed — then stops and asks: *"If you'd like me to: Correct the typo… please
+  let me know!"*
+Devstral's single pass did **not** reproduce on a re-run of `04-rename-variable`
+(fail, 43s), so treat 1/6 as noise around zero rather than partial capability.
+
+- **Devstral** shows `read` and `bash` activity, narrates a three-step plan
+  (*"1. Read the contents 2. Identify and correct 3. Write the corrected content
+  back"*), and never carries it out. The target file is unchanged.
+
+So the translation layer **was** part of the story — the mechanical tool-call path
+works through the OpenAI-compatible endpoint where it didn't through the Anthropic
+one. But these models still don't complete tasks, because they narrate or ask for
+confirmation instead of acting. That is a behavioural limit, not plumbing.
+
+Two consequences:
+
+1. The "these models simply don't emit tool calls" reading is **falsified**. They
+   do, given the right API shape.
+2. **#54's expected value drops.** If changing the local translation layer surfaces
+   tool calls without fixing the behaviour, a different cloud backend is unlikely to
+   either. Still worth running for other reasons — but not as the fix for these two.
+
+The "Confirmed unusable" table below stands, with the reason corrected: these models
+fail on autonomy, not on tool-call format.

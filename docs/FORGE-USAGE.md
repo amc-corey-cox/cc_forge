@@ -64,6 +64,22 @@ forge run --agent aider
 
 Launches Aider against the same Ollama instance instead of Claude Code.
 
+### Use OpenCode
+
+```bash
+forge run --agent opencode
+```
+
+OpenCode reaches Ollama through its OpenAI-compatible endpoint, configured via an
+injected `~/.config/opencode/opencode.json` rather than environment variables.
+
+Worth knowing when choosing: OpenCode's per-request overhead is roughly 7,100
+tokens against Claude Code's ~16,800, most of the difference being tool schemas.
+On a 64k context that leaves noticeably more room for actual work, and it makes
+each turn faster. See
+[CLAUDE-CODE-LOCAL-MODELS.md](CLAUDE-CODE-LOCAL-MODELS.md) for the measurements
+and the eval results behind that.
+
 ---
 
 ## 2. The Agent Workflow

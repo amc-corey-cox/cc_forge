@@ -1,11 +1,18 @@
 """Tests for the agent adapter interface and registry."""
 from __future__ import annotations
 
+import json
+
+import click
+import pytest
+
 from cc_forge.agents import (
     REGISTRY,
     AgentAdapter,
     AiderAdapter,
     ClaudeAdapter,
+    OpenCodeAdapter,
+    _opencode_config,
 )
 from cc_forge.config import AGENT_MODEL_DEFAULT, ForgeConfig
 
@@ -33,6 +40,7 @@ class TestRegistry:
     def test_contains_expected_adapters(self):
         assert isinstance(REGISTRY["claude"], ClaudeAdapter)
         assert isinstance(REGISTRY["aider"], AiderAdapter)
+        assert isinstance(REGISTRY["opencode"], OpenCodeAdapter)
 
 
 class TestClaudeAdapter:
@@ -106,10 +114,59 @@ class TestAiderAdapter:
         assert "host.docker.internal" in env["ANTHROPIC_BASE_URL"]
         assert env["CLAUDE_CODE_SKIP_UPDATE"] == "1"
 
-    def test_container_env_sets_ollama_api_base(self):
+    def test_container_env_sets_ollama_api_base_for_aider(self):
         """litellm (aider's backend) reads OLLAMA_API_BASE and ignores
         OLLAMA_HOST; without it aider falls back to localhost in the container."""
         config = _make_config()
         env = self.adapter.container_env(config, passthrough=False)
         assert env["OLLAMA_API_BASE"] == env["OLLAMA_HOST"]
         assert "host.docker.internal" in env["OLLAMA_API_BASE"]
+
+
+class TestOpenCodeAdapter:
+    def setup_method(self):
+        self.adapter = OpenCodeAdapter()
+
+    def test_does_not_support_passthrough(self):
+        assert self.adapter.supports_passthrough is False
+
+    def test_build_cmd_qualifies_model_with_provider(self):
+        """OpenCode addresses models as provider/model, unlike Claude Code."""
+        config = _make_config(agent_model=AGENT_MODEL_DEFAULT)
+        cmd = self.adapter.build_cmd(config, passthrough=False)
+        assert cmd == ["opencode", "-m", f"ollama/{AGENT_MODEL_DEFAULT}", "--auto"]
+
+    def test_build_cmd_uses_config_model(self):
+        config = _make_config(agent_model="deepseek-coder")
+        cmd = self.adapter.build_cmd(config, passthrough=False)
+        assert cmd == ["opencode", "-m", "ollama/deepseek-coder", "--auto"]
+
+    def test_build_cmd_does_not_double_qualify(self):
+        """A model copied from aider's convention already carries the prefix."""
+        config = _make_config(agent_model="ollama/deepseek-coder")
+        cmd = self.adapter.build_cmd(config, passthrough=False)
+        assert cmd == ["opencode", "-m", "ollama/deepseek-coder", "--auto"]
+
+    def test_build_cmd_rejects_other_providers(self):
+        """inject_state only configures ollama, so another provider would launch
+        against one the config never defines."""
+        config = _make_config(agent_model="openai/gpt-4")
+        with pytest.raises(click.ClickException) as exc:
+            self.adapter.build_cmd(config, passthrough=False)
+        assert "ollama" in str(exc.value)
+
+    def test_config_points_at_ollama_openai_endpoint(self):
+        """OpenCode speaks the OpenAI-compatible API, not Anthropic's."""
+        config = _make_config()
+        doc = json.loads(_opencode_config(config, "ollama/qwen3-coder-64k"))
+        opts = doc["provider"]["ollama"]["options"]
+        assert opts["baseURL"].endswith("/v1")
+        assert "host.docker.internal" in opts["baseURL"]
+        assert "qwen3-coder-64k" in doc["provider"]["ollama"]["models"]
+
+    def test_config_preapproves_permissions(self):
+        """The container session is unattended; prompting would hang it."""
+        config = _make_config()
+        doc = json.loads(_opencode_config(config, "ollama/qwen3-coder-64k"))
+        assert doc["permission"]["bash"] == "allow"
+        assert doc["permission"]["edit"] == "allow"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run a single (model, task) through the Claude Code harness.
+# Run a single (model, task) through an agent harness (AGENT=claude|opencode).
 #
 # Usage:
 #   OLLAMA_URL=http://forge-ollama-proxy:11434 \
@@ -35,6 +35,7 @@ TASK_DIR="${2:?task dir required}"
 OLLAMA_URL="${OLLAMA_URL:-http://forge-ollama-proxy:11434}"
 OUTPUT_BASE="${OUTPUT_BASE:-eval-results/$(date -u +%Y%m%dT%H%M%SZ)}"
 AGENT_IMAGE="${AGENT_IMAGE:-cc-forge-agent:latest}"
+AGENT="${AGENT:-claude}"
 
 PROMPT_FILE="$TASK_DIR/prompt.txt"
 [ -f "$PROMPT_FILE" ] || { echo "no prompt.txt in $TASK_DIR" >&2; exit 1; }
@@ -61,15 +62,20 @@ WS_ABS=$(cd "$OUT/workspace" && pwd)
 
 PROMPT=$(cat "$PROMPT_FILE")
 
-# Build the in-container claude command with shell-safe quoting.
-CLAUDE_CMD=$(printf 'claude -p %q --no-session-persistence --output-format json --model %q --dangerously-skip-permissions' \
-    "$PROMPT" "$MODEL")
+# Build the in-container agent command with shell-safe quoting.
+# AGENT selects the harness; score.sh inspects the workspace, so scoring is
+# identical either way and results stay comparable across harnesses.
+# shellcheck source=scripts/eval/lib.sh
+. "$(dirname "$0")/lib.sh"
+AGENT_CMD=$(agent_cmd "$AGENT" "$PROMPT" "$MODEL")
+AGENT_BOOTSTRAP=$(agent_bootstrap "$AGENT" "$OLLAMA_URL" "$MODEL")
 
-# Inline script run inside the container. $CLAUDE_CMD is expanded by the outer
+# Inline script run inside the container. $AGENT_CMD is expanded by the outer
 # shell; \$ sequences are escaped so they resolve inside the container.
-# `set -u` (no `-e`) lets us continue past a failed claude so score.sh still runs.
+# `set -u` (no `-e`) lets us continue past a failed agent so score.sh still runs.
 INNER=$(cat <<EOF
 set -uo pipefail
+$AGENT_BOOTSTRAP
 cd /workspace
 if [ -f /task/setup.sh ]; then
     bash /task/setup.sh > /meta/setup.log 2>&1
@@ -79,13 +85,13 @@ if [ -f /task/setup.sh ]; then
         exit 90
     fi
 fi
-$CLAUDE_CMD > /meta/output.json 2> /meta/stderr.log
-CLAUDE_EXIT=\$?
+$AGENT_CMD > /meta/output.json 2> /meta/stderr.log
+AGENT_EXIT=\$?
 if [ -f /task/score.sh ]; then
     (cd /workspace && bash /task/score.sh) > /meta/score.log 2>&1
     echo \$? > /meta/score-exit
 fi
-exit \$CLAUDE_EXIT
+exit \$AGENT_EXIT
 EOF
 )
 
@@ -121,8 +127,9 @@ if [ -f "$OUT/score-exit" ]; then
     fi
 fi
 
-printf '{"model":%s,"task":%s,"duration_s":%d,"exit_code":%d%s,"ollama_url":%s,"timestamp":%s}\n' \
+printf '{"model":%s,"agent":%s,"task":%s,"duration_s":%d,"exit_code":%d%s,"ollama_url":%s,"timestamp":%s}\n' \
     "$(printf '%s' "$MODEL" | jq -R .)" \
+    "$(printf '%s' "$AGENT" | jq -R .)" \
     "$(printf '%s' "$TASK_NAME" | jq -R .)" \
     "$DURATION" \
     "$EXIT_CODE" \
