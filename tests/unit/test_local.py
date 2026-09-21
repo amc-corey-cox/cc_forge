@@ -487,3 +487,47 @@ def test_git_errors_become_clean_cli_errors(monkeypatch: pytest.MonkeyPatch) -> 
     assert not isinstance(result.exception, git_mod.GitError), (
         "GitError must not escape as a traceback"
     )
+
+
+def test_prepare_skips_unreadable_entries(
+    source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every mounted volume has a root-owned lost+found; hitting one must not
+    abort the whole session."""
+    lost = source_dir / "lost+found"
+    lost.mkdir()
+    os.chmod(lost, 0o000)
+    try:
+        if os.access(lost, os.R_OK | os.X_OK):  # running as root
+            pytest.skip("cannot revoke access as root")
+
+        repo = prepare_local_directory(source_dir)
+
+        assert (repo / "notes.txt").exists(), "readable files still get through"
+        assert not (repo / "lost+found").exists()
+        err = capsys.readouterr().err
+        assert "unreadable" in err and "lost+found" in err
+        assert "fix permissions" in err
+    finally:
+        os.chmod(lost, 0o755)
+
+
+def test_prepare_skips_unreadable_nested_entries(
+    source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The check applies inside subdirectories too, where copytree would
+    otherwise fail partway through."""
+    buried = source_dir / "subdir" / "locked"
+    buried.mkdir()
+    os.chmod(buried, 0o000)
+    try:
+        if os.access(buried, os.R_OK | os.X_OK):
+            pytest.skip("cannot revoke access as root")
+
+        repo = prepare_local_directory(source_dir)
+
+        assert (repo / "subdir" / "deep.txt").exists()
+        assert not (repo / "subdir" / "locked").exists()
+        assert "subdir/locked" in capsys.readouterr().err
+    finally:
+        os.chmod(buried, 0o755)

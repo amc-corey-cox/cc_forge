@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import tarfile
 import tempfile
@@ -61,14 +62,23 @@ def _display_path(path: Path) -> str:
         return str(path)
 
 
-def _excluded(path: Path) -> bool:
-    """Whether *path* is kept out of the managed repo.
+def _skip_reason(path: Path) -> str | None:
+    """Why *path* is kept out of the managed repo, or None to copy it.
 
     Symlinks are dropped rather than followed: this command exists for files
     that must not leave the machine, and a link can resolve outside the source
     tree entirely.
     """
-    return path.name.startswith(".") or path.is_symlink()
+    if path.name.startswith("."):
+        return "hidden"
+    if path.is_symlink():
+        return "symlink"
+    # Present but not ours to read -- e.g. lost+found at the root of a mounted
+    # volume. Checked up front so the copy doesn't die partway through.
+    needed = os.R_OK | (os.X_OK if path.is_dir() else 0)
+    if not os.access(path, needed):
+        return "unreadable"
+    return None
 
 
 def _format_skipped(names: list[str], limit: int = 5) -> str:
@@ -76,12 +86,31 @@ def _format_skipped(names: list[str], limit: int = 5) -> str:
     return shown + (f" (+{len(names) - limit} more)" if len(names) > limit else "")
 
 
-def _warn_skipped(source: Path, skipped: list[Path]) -> None:
+def _warn_skipped(source: Path, skipped: list[tuple[Path, str]]) -> None:
     """Report what wasn't copied -- silently dropping a user's files is worse."""
-    rel = sorted(p.relative_to(source).as_posix() for p in skipped)
-    hidden = [name for name in rel if Path(name).name.startswith(".")]
-    links = [name for name in rel if name not in hidden]
 
+    def named(reason: str) -> list[str]:
+        return sorted(
+            p.relative_to(source).as_posix() for p, r in skipped if r == reason
+        )
+
+    hidden, links, unreadable = named("hidden"), named("symlink"), named("unreadable")
+
+    # Unreadable entries come first and say more: hidden and symlink skips are
+    # policy, but this one is an accident of permissions and might be something
+    # the user wanted.
+    if unreadable:
+        click.echo(
+            f"WARNING: skipped {len(unreadable)} unreadable entr"
+            f"{'y' if len(unreadable) == 1 else 'ies'}: "
+            f"{_format_skipped(unreadable)}",
+            err=True,
+        )
+        click.echo(
+            "  These could not be read and are absent from the session. If any "
+            "of them matter, fix permissions and re-run.",
+            err=True,
+        )
     if hidden:
         click.echo(
             f"Skipped {len(hidden)} hidden entr{'y' if len(hidden) == 1 else 'ies'}: "
@@ -108,7 +137,7 @@ def prepare_local_directory(source: Path) -> Path:
     ``~/.config/forge/local-repos/<name>-<hash>``, copies the source files into
     it, and commits any changes.  Returns the repo path.
 
-    Hidden entries and symlinks are not copied, and any that are found are
+    Hidden entries, symlinks, and anything unreadable are not copied; all are
     reported.  This is for directories of loose files -- not git repos or
     system directories.
     """
@@ -135,19 +164,21 @@ def prepare_local_directory(source: Path) -> Path:
         else:
             shutil.rmtree(item)
 
-    # Copy source files into the repo (hidden entries and symlinks are
-    # excluded at every level, not just the top).
-    skipped: list[Path] = []
+    # Copy source files into the repo (exclusions apply at every level, not
+    # just the top).
+    skipped: list[tuple[Path, str]] = []
 
     def _ignore(dirpath: str, names: list[str]) -> set[str]:
         base = Path(dirpath)
-        dropped = {name for name in names if _excluded(base / name)}
-        skipped.extend(base / name for name in dropped)
+        reasons = {name: _skip_reason(base / name) for name in names}
+        dropped = {name for name, reason in reasons.items() if reason}
+        skipped.extend((base / name, reasons[name]) for name in dropped)
         return dropped
 
     for item in source.iterdir():
-        if _excluded(item):
-            skipped.append(item)
+        reason = _skip_reason(item)
+        if reason:
+            skipped.append((item, reason))
             continue
         dest = repo_dir / item.name
         if item.is_dir():
