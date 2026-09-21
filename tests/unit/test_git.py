@@ -87,3 +87,34 @@ def test_add_remote(git_repo: Path) -> None:
 def test_git_error_on_bad_repo(tmp_path: Path) -> None:
     with pytest.raises(GitError):
         get_repo_root(tmp_path)
+
+
+def test_is_git_repo_false_for_missing_path(tmp_path):
+    """A path that was never created isn't a repo -- and mustn't crash."""
+    from cc_forge.git import is_git_repo
+
+    assert is_git_repo(tmp_path / "never-created") is False
+    not_a_dir = tmp_path / "a-file.txt"
+    not_a_dir.write_text("x")
+    assert is_git_repo(not_a_dir) is False
+
+
+def test_is_git_repo_propagates_permission_errors(tmp_path):
+    """An unreadable directory is not the same as 'not a repo' -- reporting it
+    that way would send the caller looking in the wrong place."""
+    import os
+
+    import pytest
+
+    from cc_forge.git import is_git_repo
+
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    os.chmod(locked, 0o000)
+    try:
+        if os.access(locked, os.X_OK):  # running as root: the guard can't apply
+            pytest.skip("cannot revoke access as root")
+        with pytest.raises(PermissionError):
+            is_git_repo(locked)
+    finally:
+        os.chmod(locked, 0o755)

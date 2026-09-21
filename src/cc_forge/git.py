@@ -29,8 +29,11 @@ def is_git_repo(path: str | Path = ".") -> bool:
         return True
     except GitError:
         return False
-    except OSError:
-        # cwd doesn't exist -- not a repo, rather than a crash
+    except (FileNotFoundError, NotADirectoryError):
+        # No such path, or a file where a directory was expected: unambiguously
+        # not a repo. PermissionError deliberately propagates -- reporting an
+        # unreadable directory as "not a repo" would send the caller looking
+        # in the wrong place.
         return False
 
 
