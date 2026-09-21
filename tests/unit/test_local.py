@@ -446,3 +446,44 @@ def test_pull_reports_write_failure_cleanly(
     assert "Could not write" in message
     assert "No space left on device" in message
     assert "--branch" not in message, "a write error isn't a wrong-branch error"
+
+
+def test_pull_refuses_symlink_pointing_into_source(
+    source_dir: Path, tmp_path: Path
+) -> None:
+    """A target outside the source that resolves inside it must still be
+    refused -- a lexical check alone would let it through."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+    inside = source_dir / "nested"
+    inside.mkdir()
+    link = tmp_path / "looks-outside"
+    link.symlink_to(inside)
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, link)
+
+    assert "inside" in str(exc.value)
+    assert not any(inside.iterdir()), "nothing may be written through the link"
+
+
+def test_git_errors_become_clean_cli_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing git executable is a precondition failure for the whole tool.
+    It's converted at one seam so every command benefits, rather than being
+    wrapped at each of the nine is_git_repo() call sites."""
+    from click.testing import CliRunner
+
+    import cc_forge.git as git_mod
+    from cc_forge.cli import main
+
+    def boom(*args, **kwargs):
+        raise git_mod.GitError("git executable not found on PATH")
+
+    monkeypatch.setattr(git_mod, "is_git_repo", boom)
+
+    result = CliRunner().invoke(main, ["pr-show", "1"])
+
+    assert result.exit_code != 0
+    assert "git executable not found on PATH" in result.output
+    assert not isinstance(result.exception, git_mod.GitError), (
+        "GitError must not escape as a traceback"
+    )

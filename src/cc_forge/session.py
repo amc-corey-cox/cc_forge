@@ -183,7 +183,12 @@ def pull_local_directory(
     # Writing anywhere inside the source would break the promise that the
     # source is never touched -- and the output would be picked up as input by
     # the next session, compounding itself.
-    if target == source or target.is_relative_to(source):
+    #
+    # Compared resolved, so a target that merely *points* into the source is
+    # caught too. Only the comparison resolves: _managed_repo_path() hashes the
+    # path as given, and resolving there would remap existing sessions.
+    real_target, real_source = target.resolve(), source.resolve()
+    if real_target == real_source or real_target.is_relative_to(real_source):
         raise click.ClickException(
             f"{_display_path(target)} is inside {_display_path(source)}.\n"
             "Pull into a directory outside the source tree."

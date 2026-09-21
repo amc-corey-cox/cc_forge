@@ -7,7 +7,24 @@ import click
 from cc_forge import __version__
 
 
-@click.group(invoke_without_command=True)
+class _ForgeGroup(click.Group):
+    """Turns git failures into clean CLI errors at one seam.
+
+    ``GitError`` can surface from any command -- a missing ``git`` executable
+    is a precondition of the whole tool, not an outcome of one call -- so it is
+    handled here rather than wrapped at each of the call sites.
+    """
+
+    def invoke(self, ctx: click.Context):
+        from cc_forge.git import GitError
+
+        try:
+            return super().invoke(ctx)
+        except GitError as e:
+            raise click.ClickException(str(e)) from e
+
+
+@click.group(cls=_ForgeGroup, invoke_without_command=True)
 @click.version_option(__version__, prog_name="forge")
 @click.pass_context
 def main(ctx: click.Context) -> None:
