@@ -34,6 +34,7 @@ from cc_forge.git import (
     has_remote,
     init_repo,
     is_git_repo,
+    list_tree,
     push_to_remote,
     set_remote_url,
 )
@@ -179,6 +180,15 @@ def pull_local_directory(
             f"Expected a managed repo at {_display_path(repo_dir)}."
         )
 
+    # Writing anywhere inside the source would break the promise that the
+    # source is never touched -- and the output would be picked up as input by
+    # the next session, compounding itself.
+    if target == source or target.is_relative_to(source):
+        raise click.ClickException(
+            f"{_display_path(target)} is inside {_display_path(source)}.\n"
+            "Pull into a directory outside the source tree."
+        )
+
     if target.exists():
         if not target.is_dir():
             raise click.ClickException(f"Not a directory: {_display_path(target)}")
@@ -216,12 +226,12 @@ def pull_local_directory(
 
     # Report what the agent removed. We never delete from the source -- the
     # user's copy is the only one that matters -- but they should know.
-    in_source = {
-        p.relative_to(source).as_posix()
-        for p in source.rglob("*")
-        if p.is_file() and not _excluded(p)
-    }
-    removed = sorted(in_source - set(pulled))
+    #
+    # The baseline is the managed repo's HEAD: exactly the snapshot that was
+    # pushed for the agent to work from. Comparing against the live source
+    # instead would report anything the user added since as agent-deleted.
+    baseline = set(list_tree(repo_dir))
+    removed = sorted(baseline - set(pulled))
     if removed:
         click.echo(
             f"Note: {len(removed)} file(s) present in the source are absent from "

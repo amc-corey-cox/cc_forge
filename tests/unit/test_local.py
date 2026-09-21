@@ -386,3 +386,40 @@ def test_pull_without_a_session_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(click.ClickException) as exc:
         pull_local_directory(never_used, tmp_path / "out")
     assert "No forge local session" in str(exc.value)
+
+
+def test_pull_refuses_target_inside_source(source_dir: Path, tmp_path: Path) -> None:
+    """Writing inside the source breaks the never-touch-the-source promise, and
+    the output would become the next session's input."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, source_dir / "out")
+
+    assert "inside" in str(exc.value)
+    assert not (source_dir / "out").exists(), "must refuse before creating anything"
+
+
+def test_pull_refuses_target_equal_to_source(source_dir: Path, tmp_path: Path) -> None:
+    """Caught by the inside-the-source guard, which runs before the emptiness
+    check -- so it holds even for a source that happens to be empty."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, source_dir)
+
+    assert "inside" in str(exc.value)
+
+
+def test_pull_deletion_report_ignores_later_source_edits(
+    source_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The baseline is what was pushed, not the live source -- otherwise a file
+    the user adds afterwards is reported as deleted by the agent."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+    (source_dir / "idea-i-added-later.txt").write_text("mine, written after")
+
+    pull_local_directory(source_dir, tmp_path / "pulled")
+
+    err = capsys.readouterr().err
+    assert "idea-i-added-later.txt" not in err

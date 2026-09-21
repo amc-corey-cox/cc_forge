@@ -123,3 +123,9 @@ def commit(path: str | Path, message: str) -> None:
 def archive_ref(path: str | Path, ref: str, out_file: str | Path) -> None:
     """Write the tree at *ref* to *out_file* as a tar, leaving the repo untouched."""
     _run(["archive", "--format=tar", "-o", str(out_file), ref], cwd=path)
+
+
+def list_tree(path: str | Path, ref: str = "HEAD") -> list[str]:
+    """Paths tracked at *ref*, relative to the repo root."""
+    out = _run(["ls-tree", "-r", "--name-only", ref], cwd=path)
+    return [line for line in out.splitlines() if line]
