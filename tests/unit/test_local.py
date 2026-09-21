@@ -423,3 +423,26 @@ def test_pull_deletion_report_ignores_later_source_edits(
 
     err = capsys.readouterr().err
     assert "idea-i-added-later.txt" not in err
+
+
+def test_pull_reports_write_failure_cleanly(
+    source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A disk/permissions failure while writing output should be a clean error,
+    not a traceback -- and shouldn't blame the branch."""
+    import cc_forge.session as session_mod
+
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+
+    def boom(repo_dir, ref, target):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(session_mod, "_extract_ref", boom)
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, tmp_path / "pulled")
+
+    message = str(exc.value)
+    assert "Could not write" in message
+    assert "No space left on device" in message
+    assert "--branch" not in message, "a write error isn't a wrong-branch error"

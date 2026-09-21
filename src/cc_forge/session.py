@@ -216,6 +216,13 @@ def pull_local_directory(
             f"Could not read {ref}: {e}\n"
             "Use --branch if the agent worked on a different branch."
         )
+    except (tarfile.TarError, OSError) as e:
+        # Reading the ref succeeded; writing the output didn't. Different
+        # cause, different remedy -- don't blame the branch for a disk error.
+        raise click.ClickException(
+            f"Could not write the session's files to "
+            f"{_display_path(target)}: {e}"
+        )
 
     pulled = sorted(
         p.relative_to(target).as_posix()
