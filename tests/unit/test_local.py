@@ -10,7 +10,7 @@ import click
 import pytest
 
 from cc_forge.git import is_git_repo
-from cc_forge.session import prepare_local_directory
+from cc_forge.session import prepare_local_directory, pull_local_directory
 
 
 def _make_config(**kwargs):
@@ -157,7 +157,7 @@ def test_local_requests_private_forgejo_repo(
     )
     monkeypatch.setattr(config_mod, "load_config", _make_config)
 
-    local.callback(directory=str(source_dir), agent="aider")
+    local.callback(directory=str(source_dir), agent="aider", pull_into=None, branch=None)
 
     assert captured["private"] is True
     assert captured["passthrough"] is False
@@ -185,7 +185,7 @@ def test_local_strips_cloud_credentials(
         session_mod, "start_session", lambda config, **kw: seen.update(config=config)
     )
 
-    local.callback(directory=str(source_dir), agent="aider")
+    local.callback(directory=str(source_dir), agent="aider", pull_into=None, branch=None)
 
     cfg = seen["config"]
     assert cfg.github_token == ""
@@ -297,3 +297,193 @@ def test_prepare_rejects_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     assert str(fake_home) not in str(exc.value)
     assert "~/not-a-dir.txt" in str(exc.value)
+
+
+def _fake_forgejo_session(source: Path, tmp_path: Path, edits) -> Path:
+    """Run a prepare, push to a local bare 'forgejo', apply *edits* there.
+
+    Stands in for an agent session: the bare repo is what forge would pull from.
+    """
+    repo = prepare_local_directory(source)
+    bare = tmp_path / "forgejo.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
+    subprocess.run(["git", "remote", "add", "forgejo", str(bare)], cwd=repo, check=True)
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"], cwd=repo,
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "push", "-q", "forgejo", branch], cwd=repo, check=True)
+
+    # "Agent" work: clone, mutate, push back
+    work = tmp_path / "agent-work"
+    subprocess.run(["git", "clone", "-q", str(bare), str(work)], check=True)
+    subprocess.run(["git", "config", "user.email", "a@a"], cwd=work, check=True)
+    subprocess.run(["git", "config", "user.name", "agent"], cwd=work, check=True)
+    edits(work)
+    subprocess.run(["git", "add", "-A"], cwd=work, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "agent work", "--allow-empty"], cwd=work, check=True
+    )
+    subprocess.run(["git", "push", "-q", "origin", branch], cwd=work, check=True)
+    return repo
+
+
+def test_pull_writes_agent_output_into_empty_target(
+    source_dir: Path, tmp_path: Path
+) -> None:
+    def edits(work: Path) -> None:
+        (work / "notes.txt").write_text("rewritten by the agent")
+        (work / "new-chapter.txt").write_text("brand new")
+
+    _fake_forgejo_session(source_dir, tmp_path, edits)
+    target = tmp_path / "pulled"
+
+    pull_local_directory(source_dir, target)
+
+    assert (target / "notes.txt").read_text() == "rewritten by the agent"
+    assert (target / "new-chapter.txt").read_text() == "brand new"
+    assert (target / "subdir" / "deep.txt").exists()
+    # The source is never written to
+    assert (source_dir / "notes.txt").read_text() == "some notes"
+    assert not (source_dir / "new-chapter.txt").exists()
+
+
+def test_pull_refuses_non_empty_target(source_dir: Path, tmp_path: Path) -> None:
+    """The whole point: never write over the user's existing files."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "precious.txt").write_text("do not clobber")
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, target)
+
+    assert "not empty" in str(exc.value)
+    assert (target / "precious.txt").read_text() == "do not clobber"
+
+
+def test_pull_reports_removals_without_deleting(
+    source_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Agent deletions are reported; the user's copy is never removed."""
+    _fake_forgejo_session(
+        source_dir, tmp_path, lambda w: (w / "notes.txt").unlink()
+    )
+    target = tmp_path / "pulled"
+
+    pull_local_directory(source_dir, target)
+
+    err = capsys.readouterr().err
+    assert "notes.txt" in err
+    assert "untouched" in err
+    assert (source_dir / "notes.txt").exists(), "source file must survive"
+    assert not (target / "notes.txt").exists()
+
+
+def test_pull_without_a_session_is_an_error(tmp_path: Path) -> None:
+    never_used = tmp_path / "never-used"
+    never_used.mkdir()
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(never_used, tmp_path / "out")
+    assert "No forge local session" in str(exc.value)
+
+
+def test_pull_refuses_target_inside_source(source_dir: Path, tmp_path: Path) -> None:
+    """Writing inside the source breaks the never-touch-the-source promise, and
+    the output would become the next session's input."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, source_dir / "out")
+
+    assert "inside" in str(exc.value)
+    assert not (source_dir / "out").exists(), "must refuse before creating anything"
+
+
+def test_pull_refuses_target_equal_to_source(source_dir: Path, tmp_path: Path) -> None:
+    """Caught by the inside-the-source guard, which runs before the emptiness
+    check -- so it holds even for a source that happens to be empty."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, source_dir)
+
+    assert "inside" in str(exc.value)
+
+
+def test_pull_deletion_report_ignores_later_source_edits(
+    source_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The baseline is what was pushed, not the live source -- otherwise a file
+    the user adds afterwards is reported as deleted by the agent."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+    (source_dir / "idea-i-added-later.txt").write_text("mine, written after")
+
+    pull_local_directory(source_dir, tmp_path / "pulled")
+
+    err = capsys.readouterr().err
+    assert "idea-i-added-later.txt" not in err
+
+
+def test_pull_reports_write_failure_cleanly(
+    source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A disk/permissions failure while writing output should be a clean error,
+    not a traceback -- and shouldn't blame the branch."""
+    import cc_forge.session as session_mod
+
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+
+    def boom(repo_dir, ref, target):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(session_mod, "_extract_ref", boom)
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, tmp_path / "pulled")
+
+    message = str(exc.value)
+    assert "Could not write" in message
+    assert "No space left on device" in message
+    assert "--branch" not in message, "a write error isn't a wrong-branch error"
+
+
+def test_pull_refuses_symlink_pointing_into_source(
+    source_dir: Path, tmp_path: Path
+) -> None:
+    """A target outside the source that resolves inside it must still be
+    refused -- a lexical check alone would let it through."""
+    _fake_forgejo_session(source_dir, tmp_path, lambda w: None)
+    inside = source_dir / "nested"
+    inside.mkdir()
+    link = tmp_path / "looks-outside"
+    link.symlink_to(inside)
+
+    with pytest.raises(click.ClickException) as exc:
+        pull_local_directory(source_dir, link)
+
+    assert "inside" in str(exc.value)
+    assert not any(inside.iterdir()), "nothing may be written through the link"
+
+
+def test_git_errors_become_clean_cli_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing git executable is a precondition failure for the whole tool.
+    It's converted at one seam so every command benefits, rather than being
+    wrapped at each of the nine is_git_repo() call sites."""
+    from click.testing import CliRunner
+
+    import cc_forge.git as git_mod
+    from cc_forge.cli import main
+
+    def boom(*args, **kwargs):
+        raise git_mod.GitError("git executable not found on PATH")
+
+    monkeypatch.setattr(git_mod, "is_git_repo", boom)
+
+    result = CliRunner().invoke(main, ["pr-show", "1"])
+
+    assert result.exit_code != 0
+    assert "git executable not found on PATH" in result.output
+    assert not isinstance(result.exception, git_mod.GitError), (
+        "GitError must not escape as a traceback"
+    )

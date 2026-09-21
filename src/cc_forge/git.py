@@ -29,6 +29,17 @@ def is_git_repo(path: str | Path = ".") -> bool:
         return True
     except GitError:
         return False
+    except (FileNotFoundError, NotADirectoryError) as e:
+        # subprocess raises FileNotFoundError both for a missing cwd and for a
+        # missing executable; e.filename says which. "git isn't installed" is an
+        # environment problem, not an answer to "is there a repo here?".
+        if isinstance(e, FileNotFoundError) and e.filename == "git":
+            raise GitError("git executable not found on PATH") from e
+        # No such path, or a file where a directory was expected: unambiguously
+        # not a repo. PermissionError deliberately propagates too -- reporting
+        # an unreadable directory as "not a repo" would send the caller looking
+        # in the wrong place.
+        return False
 
 
 def get_repo_root(path: str | Path = ".") -> Path:
@@ -115,3 +126,14 @@ def commit(path: str | Path, message: str) -> None:
             f"git diff --cached failed: {result.stderr.decode(errors='replace').strip()}"
         )
     _run(["commit", "-m", message], cwd=path)
+
+
+def archive_ref(path: str | Path, ref: str, out_file: str | Path) -> None:
+    """Write the tree at *ref* to *out_file* as a tar, leaving the repo untouched."""
+    _run(["archive", "--format=tar", "-o", str(out_file), ref], cwd=path)
+
+
+def list_tree(path: str | Path, ref: str = "HEAD") -> list[str]:
+    """Paths tracked at *ref*, relative to the repo root."""
+    out = _run(["ls-tree", "-r", "--name-only", ref], cwd=path)
+    return [line for line in out.splitlines() if line]

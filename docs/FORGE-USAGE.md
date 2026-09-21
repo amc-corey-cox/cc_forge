@@ -80,6 +80,35 @@ each turn faster. See
 [CLAUDE-CODE-LOCAL-MODELS.md](CLAUDE-CODE-LOCAL-MODELS.md) for the measurements
 and the eval results behind that.
 
+### Work on a directory of loose files
+
+```bash
+forge local ~/stories
+```
+
+For files that aren't a git repo — notes, drafts, documents. Forge copies them
+into a managed repo under `~/.config/forge/local-repos/`, pushes it to a
+**private** Forgejo repo, and runs a local-only session: cloud credentials are
+never injected, so the contents reach nothing but your own machine.
+
+Hidden entries (dotfiles, dot-directories) and symlinks are not copied; anything
+skipped is reported. This mode is for loose files, not git repos or system
+directories.
+
+### Get the results back
+
+```bash
+forge local ~/stories --pull ~/stories-reviewed
+```
+
+Writes the session's output into the given directory, which **must be empty or
+not exist**. Your originals are never written over — forge won't merge for you,
+so you can diff the two and decide what to keep.
+
+If the agent deleted something, that's reported rather than applied: your copy
+stays. Add `--branch <name>` if the agent worked on a branch other than the one
+`forge local` pushed.
+
 ---
 
 ## 2. The Agent Workflow

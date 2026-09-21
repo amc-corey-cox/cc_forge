@@ -7,7 +7,24 @@ import click
 from cc_forge import __version__
 
 
-@click.group(invoke_without_command=True)
+class _ForgeGroup(click.Group):
+    """Turns git failures into clean CLI errors at one seam.
+
+    ``GitError`` can surface from any command -- a missing ``git`` executable
+    is a precondition of the whole tool, not an outcome of one call -- so it is
+    handled here rather than wrapped at each of the call sites.
+    """
+
+    def invoke(self, ctx: click.Context):
+        from cc_forge.git import GitError
+
+        try:
+            return super().invoke(ctx)
+        except GitError as e:
+            raise click.ClickException(str(e)) from e
+
+
+@click.group(cls=_ForgeGroup, invoke_without_command=True)
 @click.version_option(__version__, prog_name="forge")
 @click.pass_context
 def main(ctx: click.Context) -> None:
@@ -59,7 +76,13 @@ def run(repo: str, agent: str, passthrough: bool, claude_compat: bool) -> None:
 @click.option("--agent", default="aider",
               type=click.Choice(list(_agent_choices())),
               help="Agent to use inside the container (default: aider).")
-def local(directory: str, agent: str) -> None:
+@click.option("--pull", "pull_into", default=None,
+              type=click.Path(file_okay=False, resolve_path=True),
+              help="Pull this session's results into an empty directory "
+                   "instead of starting a session.")
+@click.option("--branch", default=None,
+              help="Branch to pull (default: the branch forge local pushed).")
+def local(directory: str, agent: str, pull_into: str | None, branch: str | None) -> None:
     """Start a local-only session on a directory of loose files.
 
     Copies files into a managed git repo, pushes to local Forgejo, and
@@ -69,12 +92,27 @@ def local(directory: str, agent: str) -> None:
     Hidden entries (dotfiles and dot-directories) and symlinks are not copied;
     anything skipped is reported.  This mode is for directories of loose files,
     not for git repos or system directories.
+
+    With --pull, no session starts: the results of a previous session on
+    DIRECTORY are written into the given empty directory, leaving your
+    originals untouched so the merge stays your decision.
     """
     from pathlib import Path
 
     from cc_forge.agents import REGISTRY
     from cc_forge.config import load_config
-    from cc_forge.session import prepare_local_directory, start_session
+    from cc_forge.session import (
+        prepare_local_directory,
+        pull_local_directory,
+        start_session,
+    )
+
+    if pull_into:
+        pull_local_directory(Path(directory), Path(pull_into), branch)
+        return
+
+    if branch:
+        raise click.UsageError("--branch only applies with --pull")
 
     adapter = REGISTRY[agent]
     cfg = load_config().without_cloud_credentials()
