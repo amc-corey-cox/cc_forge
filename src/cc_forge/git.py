@@ -29,10 +29,15 @@ def is_git_repo(path: str | Path = ".") -> bool:
         return True
     except GitError:
         return False
-    except (FileNotFoundError, NotADirectoryError):
+    except (FileNotFoundError, NotADirectoryError) as e:
+        # subprocess raises FileNotFoundError both for a missing cwd and for a
+        # missing executable; e.filename says which. "git isn't installed" is an
+        # environment problem, not an answer to "is there a repo here?".
+        if isinstance(e, FileNotFoundError) and e.filename == "git":
+            raise GitError("git executable not found on PATH") from e
         # No such path, or a file where a directory was expected: unambiguously
-        # not a repo. PermissionError deliberately propagates -- reporting an
-        # unreadable directory as "not a repo" would send the caller looking
+        # not a repo. PermissionError deliberately propagates too -- reporting
+        # an unreadable directory as "not a repo" would send the caller looking
         # in the wrong place.
         return False
 

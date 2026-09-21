@@ -118,3 +118,25 @@ def test_is_git_repo_propagates_permission_errors(tmp_path):
             is_git_repo(locked)
     finally:
         os.chmod(locked, 0o755)
+
+
+def test_is_git_repo_surfaces_missing_git_executable(tmp_path, monkeypatch):
+    """subprocess raises FileNotFoundError for a missing cwd *and* a missing
+    binary. 'git isn't installed' must not be reported as 'not a repo'."""
+    import subprocess
+
+    import pytest
+
+    from cc_forge.git import GitError, is_git_repo
+
+    real_run = subprocess.run
+
+    def fake_run(args, **kwargs):
+        if args and args[0] == "git":
+            raise FileNotFoundError(2, "No such file or directory", "git")
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(GitError, match="git executable"):
+        is_git_repo(tmp_path)
